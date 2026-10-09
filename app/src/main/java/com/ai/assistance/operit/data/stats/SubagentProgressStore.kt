@@ -4,7 +4,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-data class SubagentToolProgress(val id: String, val name: String, val status: String)
+data class SubagentToolProgress(val id: String, val name: String, val status: String) {
+    val isTerminal: Boolean
+        get() = status in setOf("result", "error", "failed", "timed_out", "cancelled")
+}
 data class SubagentProgress(
     val agentId: String,
     val agentType: String,
@@ -30,7 +33,7 @@ object SubagentProgressStore {
     fun tool(chatId: String, agentId: String, event: SubagentToolProgress) {
         val agents = state.value[chatId] ?: return
         state.value = state.value + (chatId to agents.map { agent ->
-            if (agent.agentId != agentId) agent else {
+            if (agent.agentId != agentId || agent.status != "running") agent else {
                 val existing = agent.tools.indexOfFirst { it.id == event.id }
                 val tools = if (existing < 0) agent.tools + event else
                     agent.tools.map { if (it.id == event.id) event else it }

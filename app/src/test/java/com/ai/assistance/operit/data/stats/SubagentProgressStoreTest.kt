@@ -57,6 +57,28 @@ class SubagentProgressStoreTest {
     }
 
     @Test
+    fun finishClosesPendingToolsAndIgnoresLateToolEvents() {
+        for (status in listOf("completed", "failed", "timed_out", "cancelled")) {
+            val chatId = UUID.randomUUID().toString()
+            try {
+                SubagentProgressStore.start(chatId, SubagentProgress("agent", "Explore", "Inspect"))
+                SubagentProgressStore.tool(chatId, "agent", SubagentToolProgress("tool", "read_file", "scheduled"))
+                SubagentProgressStore.finish(chatId, "agent", status)
+                val finished = SubagentProgressStore.sessions.value.getValue(chatId).single()
+                assertEquals(status, finished.status)
+                assertTrue(finished.tools.single().isTerminal)
+                assertEquals(if (status == "completed") "error" else status, finished.tools.single().status)
+                SubagentProgressStore.tool(chatId, "agent", SubagentToolProgress("tool", "read_file", "started"))
+                assertEquals(finished, SubagentProgressStore.sessions.value.getValue(chatId).single())
+            } finally {
+                SubagentProgressStore.clear(chatId)
+            }
+        }
+        assertTrue(!SubagentToolProgress("tool", "read_file", "started").isTerminal)
+        assertTrue(!SubagentToolProgress("tool", "read_file", "scheduled").isTerminal)
+    }
+
+    @Test
     fun boundsToolHistory() {
         val chatId = UUID.randomUUID().toString()
         try {

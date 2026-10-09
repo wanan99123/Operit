@@ -193,7 +193,7 @@ private fun SubagentProgressRow(agent: SubagentProgress) {
         )
         Text(
             text = stringResource(R.string.plan_agent_tool_progress,
-                agent.tools.count { it.status == "result" || it.status == "error" },
+                agent.tools.count { it.isTerminal },
                 agent.tools.size),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
