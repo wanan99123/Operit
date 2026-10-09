@@ -169,6 +169,11 @@ fun ChatScreenHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // 计划步骤：位于 token 圆环左侧
+            val planSteps by actualViewModel.planSteps.collectAsState()
+            val planChatId by actualViewModel.currentChatId.collectAsState()
+            PlanStepsButton(steps = planSteps, sessionId = planChatId)
+
             // 统计信息
             val maxWindowSize = (maxWindowSizeInK * 1024).toLong().coerceAtLeast(0L)
             val totalTokenCount = inputTokenCount + outputTokenCount

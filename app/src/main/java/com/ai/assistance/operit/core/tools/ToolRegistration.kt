@@ -1738,6 +1738,16 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
         descriptionGenerator = { _ -> s(R.string.chat_subagent_action) },
         executor = com.ai.assistance.operit.core.tools.defaultTool.standard.StandardSubagentTool(context)
     )
+    handler.registerTool(
+        name = "update_plan",
+        descriptionGenerator = { _ -> s(R.string.toolreg_update_plan_desc) },
+        executor = com.ai.assistance.operit.core.tools.defaultTool.standard.UpdatePlanTool()
+    )
+    handler.registerTool(
+        name = "read_plan",
+        descriptionGenerator = { _ -> s(R.string.toolreg_read_plan_desc) },
+        executor = com.ai.assistance.operit.core.tools.defaultTool.standard.ReadPlanTool()
+    )
     // 列出所有角色卡
     handler.registerTool(
             name = "list_character_cards",

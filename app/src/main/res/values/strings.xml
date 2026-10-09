@@ -8504,19 +8504,14 @@
     <string name="codex_usage_unavailable">额度暂时不可用</string>
     <string name="codex_reset_after_days">%1$d 天后重置</string>
     <string name="codex_reset_after_clock">%1$02d:%2$02d 后重置</string>
-
-    <!-- Chat footer token meter and bounded subagent delegation. -->
-    <string name="chat_meter_title">Token 用量</string>
-    <string name="chat_meter_unknown">未知</string>
-    <string name="chat_meter_estimate">≈%1$s</string>
-    <string name="chat_meter_context">上下文 %1$s/%2$s</string>
-    <string name="chat_meter_input">输入 %1$s</string>
-    <string name="chat_meter_output">输出 %1$s</string>
-    <string name="chat_meter_cache">命中 %1$s</string>
-    <string name="chat_meter_close">关闭</string>
-    <string name="chat_meter_explanation">底栏输入、输出和缓存对应最近一次模型请求；累计数对应当前聊天。≈ 表示流式估算，未知表示供应商未报告。缓存已包含在输入内，不重复相加。</string>
-    <string name="chat_subagent_action">调用子智能体</string>
+<string name="chat_subagent_action">调用子智能体</string>
     <string name="chat_subagent_accepted">子任务已接收</string>
     <string name="chat_subagent_running">子智能体正在执行</string>
     <string name="chat_subagent_completed">子智能体已完成</string>
+    <string name="toolreg_update_plan_desc">创建或更新本会话的工作计划</string>
+    <string name="toolreg_read_plan_desc">读取当前会话的工作计划</string>
+    <string name="plan_steps_title">计划步骤</string>
+    <string name="plan_steps_empty">当前没有计划。让模型规划多步骤任务后会显示进度。</string>
+    <string name="plan_steps_progress">已完成 %1$d / %2$d</string>
+    <string name="plan_steps_current">当前：%1$s</string>
 </resources>

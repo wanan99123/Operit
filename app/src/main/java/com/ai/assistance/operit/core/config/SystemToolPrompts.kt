@@ -53,6 +53,18 @@ object SystemToolPrompts {
                 )
             ),
             ToolPrompt(
+                name = "update_plan",
+                description = "Create or update the working plan for this session. The plan is rendered to the user as live progress. Send the complete list each call; it replaces the previous plan. Keep exactly one step in_progress at a time and mark it completed when done. Use it for multi-step work, not for single-step tasks.",
+                parametersStructured = listOf(
+                    ToolParameterSchema(name = "todos", type = "string", description = "JSON array of {content, status, priority}. status: pending|in_progress|completed. priority: high|medium|low.", required = true),
+                )
+            ),
+            ToolPrompt(
+                name = "read_plan",
+                description = "Read the current session working plan without modifying it.",
+                parametersStructured = null
+            ),
+            ToolPrompt(
                 name = "sleep",
                 description = "Demonstration tool that pauses briefly.",
                 parametersStructured = listOf(
@@ -86,6 +98,18 @@ object SystemToolPrompts {
                     ToolParameterSchema(name = "max_tool_calls", type = "integer", description = "模型工具调用硬上限，1..32，默认8。", required = false, default = "8"),
                     ToolParameterSchema(name = "timeout_seconds", type = "integer", description = "执行超时秒数，10..600，默认180。", required = false, default = "180"),
                 )
+            ),
+            ToolPrompt(
+                name = "update_plan",
+                description = "创建或更新本会话的工作计划。计划会作为实时进度展示给用户。每次必须发送完整列表，它会整体替换上一版。同一时间只保留一个 in_progress 步骤，完成后标记为 completed。适用于多步骤任务，单步任务不需要。",
+                parametersStructured = listOf(
+                    ToolParameterSchema(name = "todos", type = "string", description = "JSON 数组，元素为 {content, status, priority}。status：pending|in_progress|completed；priority：high|medium|low。", required = true),
+                )
+            ),
+            ToolPrompt(
+                name = "read_plan",
+                description = "读取当前会话的工作计划，不做修改。",
+                parametersStructured = null
             ),
             ToolPrompt(
                 name = "sleep",

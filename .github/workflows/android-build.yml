@@ -13,8 +13,9 @@ on:
           - ':app:assembleNightly'
           - ':app:assembleClone'
           - ':app:bundleRelease'
+          - ':app:packageRelease'
   push:
-    branches: [main, feat/chat-token-meter-subagents]
+    branches: [main, feat/chat-token-meter-subagents, feat/plan-steps-and-subagents]
     paths:
       - .github/workflows/android-build.yml
       - .gitmodules
@@ -200,10 +201,10 @@ jobs:
           set -euo pipefail
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      - name: Test chat meter and subagent contracts
+      - name: Test plan and subagent contracts
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest --tests 'com.ai.assistance.operit.data.stats.ChatRequestTokenUsageTest' --tests 'com.ai.assistance.operit.api.chat.enhance.ToolCallBudgetTest' --tests 'com.ai.assistance.operit.core.tools.defaultTool.standard.SubagentRequestTest' --tests 'com.ai.assistance.operit.api.chat.llmprovider.XaiProviderReasoningTest' --tests 'com.ai.assistance.operit.api.chat.llmprovider.DeepseekProviderMediaRoleTest' --stacktrace --no-daemon
+          ./gradlew :app:testReleaseUnitTest --tests 'com.ai.assistance.operit.core.tools.defaultTool.standard.PlanStepRequestTest' --tests 'com.ai.assistance.operit.data.stats.PlanStepStoreTest' --tests 'com.ai.assistance.operit.api.chat.enhance.ToolCallBudgetTest' --tests 'com.ai.assistance.operit.core.tools.defaultTool.standard.SubagentRequestTest' --tests 'com.ai.assistance.operit.api.chat.llmprovider.XaiProviderReasoningTest' --tests 'com.ai.assistance.operit.api.chat.llmprovider.DeepseekProviderMediaRoleTest' --stacktrace --no-daemon
       - name: Run Gradle build
         env:
           DISPATCH_GRADLE_TASK: ${{ inputs.gradle_task }}
@@ -212,7 +213,13 @@ jobs:
         run: |
           set -euo pipefail
           case "$EVENT_NAME" in
-            push) gradle_task=assembleDebug ;;
+            push)
+              if [[ "$GITHUB_REF_NAME" == "feat/plan-steps-and-subagents" ]]; then
+                gradle_task=:app:packageRelease
+              else
+                gradle_task=assembleDebug
+              fi
+              ;;
             workflow_dispatch) gradle_task="$DISPATCH_GRADLE_TASK" ;;
             *) echo "Unsupported workflow event: $EVENT_NAME" >&2; exit 2 ;;
           esac

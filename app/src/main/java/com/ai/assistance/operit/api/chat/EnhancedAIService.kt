@@ -30,7 +30,6 @@ import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.climode.CliToolModeSupport
 import com.ai.assistance.operit.core.tools.climode.ToolExposureMode
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
-import com.ai.assistance.operit.data.stats.ChatRequestTokenUsage
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
@@ -410,8 +409,6 @@ class EnhancedAIService private constructor(
     // Per-request token counts
     private val _perRequestTokenCounts = MutableStateFlow<Pair<Long, Long>?>(null)
     val perRequestTokenCounts: StateFlow<Pair<Long, Long>?> = _perRequestTokenCounts.asStateFlow()
-    private val _requestTokenUsage = MutableStateFlow<ChatRequestTokenUsage?>(null)
-    val requestTokenUsage: StateFlow<ChatRequestTokenUsage?> = _requestTokenUsage.asStateFlow()
 
     // Stable request window estimate for the next model hop.
     private val _requestWindowEstimate = MutableStateFlow<Long?>(null)
@@ -942,7 +939,6 @@ class EnhancedAIService private constructor(
         require(!delegatedInstance || options.isSubTask) { "Delegated services only accept subtask requests" }
         delegatedFailure = null
         delegatedFinalReply = null
-        _requestTokenUsage.value = null
         lastReplyContent = null
         val message = options.message
         val chatId = options.chatId
@@ -1084,7 +1080,6 @@ class EnhancedAIService private constructor(
 
                     // 清空之前的单次请求token计数
                     _perRequestTokenCounts.value = null
-                    _requestTokenUsage.value = null
                     currentRequestInputTokenCount = 0L
                     currentRequestOutputTokenCount = 0L
                     currentRequestCachedInputTokenCount = 0L
@@ -1176,21 +1171,6 @@ class EnhancedAIService private constructor(
                                         currentRequestOutputTokenCount = output.coerceAtLeast(0)
                                         currentRequestCachedInputTokenCount = cachedInput.coerceAtLeast(0)
                                         _perRequestTokenCounts.value = Pair(input, output)
-                                        if (isExecutionContextActive(execContext)) {
-                                            _requestTokenUsage.value = (_requestTokenUsage.value ?: ChatRequestTokenUsage())
-                                                .withEstimate(input, output)
-                                        }
-                                    },
-                                    onUsageReported = { usage, attempt ->
-                                        if (isExecutionContextActive(execContext)) {
-                                            _requestTokenUsage.value = (_requestTokenUsage.value ?: ChatRequestTokenUsage())
-                                                .withProviderUsage(usage, attempt)
-                                        }
-                                    },
-                                    onUsageFinalized = { attempt ->
-                                        if (isExecutionContextActive(execContext)) {
-                                            _requestTokenUsage.value = _requestTokenUsage.value?.finalized(attempt)
-                                        }
                                     },
                                      onNonFatalError = onNonFatalError,
                             )
@@ -2404,7 +2384,6 @@ class EnhancedAIService private constructor(
 
         // 清空之前的单次请求token计数
         _perRequestTokenCounts.value = null
-        _requestTokenUsage.value = null
         currentRequestInputTokenCount = 0L
         currentRequestOutputTokenCount = 0L
         currentRequestCachedInputTokenCount = 0L
@@ -2427,21 +2406,6 @@ class EnhancedAIService private constructor(
                                     currentRequestOutputTokenCount = output.coerceAtLeast(0)
                                     currentRequestCachedInputTokenCount = cachedInput.coerceAtLeast(0)
                                     _perRequestTokenCounts.value = Pair(input, output)
-                                    if (isExecutionContextActive(context)) {
-                                        _requestTokenUsage.value = (_requestTokenUsage.value ?: ChatRequestTokenUsage())
-                                            .withEstimate(input, output)
-                                    }
-                                },
-                                onUsageReported = { usage, attempt ->
-                                    if (isExecutionContextActive(context)) {
-                                        _requestTokenUsage.value = (_requestTokenUsage.value ?: ChatRequestTokenUsage())
-                                            .withProviderUsage(usage, attempt)
-                                    }
-                                },
-                                onUsageFinalized = { attempt ->
-                                    if (isExecutionContextActive(context)) {
-                                        _requestTokenUsage.value = _requestTokenUsage.value?.finalized(attempt)
-                                    }
                                 },
                                  onNonFatalError = onNonFatalError,
                         )
@@ -2641,7 +2605,6 @@ class EnhancedAIService private constructor(
         currentRequestCachedInputTokenCount = 0L
         _perRequestTokenCounts.value =
             Pair(accumulatedInputTokenCount, accumulatedOutputTokenCount)
-        _requestTokenUsage.value = null // A restored turn aggregate is not one provider request.
         AppLogger.d(
             TAG,
             "Current turn token counts overridden. Input: $accumulatedInputTokenCount, Output: $accumulatedOutputTokenCount, CachedInput: $accumulatedCachedInputTokenCount"
@@ -2951,7 +2914,6 @@ class EnhancedAIService private constructor(
 
         // Reset per-request token counts
         _perRequestTokenCounts.value = null
-        _requestTokenUsage.value = null
         accumulatedInputTokenCount = 0L
         accumulatedOutputTokenCount = 0L
         accumulatedCachedInputTokenCount = 0L
