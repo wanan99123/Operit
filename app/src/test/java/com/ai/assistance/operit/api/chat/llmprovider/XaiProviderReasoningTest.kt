@@ -1,12 +1,19 @@
 package com.ai.assistance.operit.api.chat.llmprovider
 
 import com.ai.assistance.operit.data.collects.ApiProviderConfigs
+import com.ai.assistance.operit.data.collects.ModelThinkingConfigDefaults
 import com.ai.assistance.operit.data.model.ApiProviderType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class XaiProviderReasoningTest {
+    private fun mapping(modelName: String = "grok-4.6"): ThinkingQualityMapping =
+        ThinkingQualityMappingRegistry.resolve(
+            providerTypeId = ApiProviderType.XAI.name,
+            modelName = modelName,
+            thinkingConfigurations = ModelThinkingConfigDefaults.forProvider(ApiProviderType.XAI.name)
+        )
     @Test
     fun defaultConfigUsesTheOfficialXaiEndpointAndModel() {
         assertEquals(
@@ -31,7 +38,7 @@ class XaiProviderReasoningTest {
         assertEquals(
             listOf("low", "medium", "high", "xhigh"),
             listOf("low", "medium", "high", "xhigh").map {
-                XaiReasoningMapper.effortForOption(optionId = it)
+                mapping().textValueFor(it)
             }
         )
     }
@@ -40,14 +47,17 @@ class XaiProviderReasoningTest {
     fun mapperPreservesTheSelectedEffort() {
         assertEquals(
             "high",
-            XaiReasoningMapper.effortForOption(optionId = "high")
+            mapping().textValueFor("high")
         )
     }
 
     @Test
     fun reasoningEffortUsesTheGrokFamilyRule() {
-        assertTrue(xaiModelSupportsReasoningEffort("grok-4.6"))
-        assertTrue(xaiModelSupportsReasoningEffort("grok-4.5-latest"))
-        assertTrue(xaiModelSupportsReasoningEffort("grok-3-mini"))
+        listOf("grok-4.6", "grok-4.5-latest", "grok-3-mini").forEach { model ->
+            val resolved = mapping(model)
+            assertEquals(ThinkingQualityControl.LEVELS, resolved.control)
+            assertEquals("reasoning_effort", resolved.parameterLabel)
+            assertTrue(resolved.options.isNotEmpty())
+        }
     }
 }
