@@ -102,9 +102,10 @@ class AIToolHandler private constructor(private val context: Context) {
         val target = if (tool.name == "package_proxy" || tool.name == "proxy") {
             tool.parameters.firstOrNull { it.name == "tool_name" }?.value.orEmpty()
         } else tool.name
-        if (runtime?.isSubTask == true && target.substringAfterLast(':') in setOf("run_subagent", "subagent_run")) {
-            return AIToolHookDecision.Block("Nested subagent delegation is disabled")
-        }
+        val profileDenial = com.ai.assistance.operit.core.tools.defaultTool.standard.SubagentPolicy.denial(
+            target, runtime?.isSubTask == true, runtime?.subagentProfile
+        )
+        if (profileDenial != null) return AIToolHookDecision.Block(profileDenial)
         toolHooks.forEach { hook ->
             val decision =
                     try {

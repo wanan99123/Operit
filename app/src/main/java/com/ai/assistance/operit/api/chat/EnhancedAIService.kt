@@ -101,6 +101,7 @@ import com.ai.assistance.operit.util.LocaleUtils
 class EnhancedAIService private constructor(
     private val context: Context,
     private val delegatedInstance: Boolean = false,
+    private val subagentProfile: com.ai.assistance.operit.core.tools.defaultTool.standard.SubagentProfile? = null,
 ) {
     data class TurnTokenSnapshot(
         val inputTokens: Long,
@@ -133,8 +134,11 @@ class EnhancedAIService private constructor(
         }
 
         /** A subagent must never reuse the parent's counters, streams or cancellation state. */
-        fun createSubagentInstance(context: Context): EnhancedAIService =
-            EnhancedAIService(context.applicationContext, delegatedInstance = true)
+        fun createSubagentInstance(context: Context,
+            profile: com.ai.assistance.operit.core.tools.defaultTool.standard.SubagentProfile =
+                com.ai.assistance.operit.core.tools.defaultTool.standard.SubagentProfile.GENERAL_PURPOSE
+        ): EnhancedAIService =
+            EnhancedAIService(context.applicationContext, delegatedInstance = true, subagentProfile = profile)
 
         fun getChatInstance(context: Context, chatId: String): EnhancedAIService {
             val appContext = context.applicationContext
@@ -364,6 +368,7 @@ class EnhancedAIService private constructor(
         var stream: Boolean = true,
         var disableWarning: Boolean = false,
         var maxToolCalls: Int? = null,
+        var onChildToolEvent: (suspend (ToolInvocation, String, ToolResult?) -> Unit)? = null,
     )
 
     // MultiServiceManager 管理不同功能的 AIService 实例
@@ -444,6 +449,7 @@ class EnhancedAIService private constructor(
         val eventChannel: MutableSharedStream<TextStreamEvent>,
         var modelExecutionSnapshot: ModelExecutionSnapshot? = null,
         val toolCallBudget: ToolCallBudget = ToolCallBudget(null),
+        val onChildToolEvent: (suspend (ToolInvocation, String, ToolResult?) -> Unit)? = null,
         val workspacePath: String? = null,
         val workspaceEnv: String? = null,
     )
@@ -1005,6 +1011,7 @@ class EnhancedAIService private constructor(
                     conversationHistory = chatHistory.toMutableList(),
                     eventChannel = eventChannel,
                     toolCallBudget = ToolCallBudget(options.maxToolCalls),
+                    onChildToolEvent = options.onChildToolEvent,
                     workspacePath = options.workspacePath,
                     workspaceEnv = options.workspaceEnv,
                 )
@@ -2184,6 +2191,8 @@ class EnhancedAIService private constructor(
                 memorySpaceId = memorySpaceIdOverride,
                 workspacePath = context.workspacePath,
                 workspaceEnv = context.workspaceEnv,
+                subagentProfile = subagentProfile,
+                onChildToolEvent = context.onChildToolEvent,
             )
 
             if (toolBatch.results.isNotEmpty()) {
@@ -3074,7 +3083,11 @@ class EnhancedAIService private constructor(
                 TAG,
                 "Tool Call已启用，提供 ${hookedTools.size} 个工具 (base=${selectedTools.size}, enableTools=$enableTools, visibleToolOverrides=${toolPromptVisibility.size}, roleCardCustomTools=${roleCardToolAccess.customEnabled})"
             )
-            hookedTools
+            hookedTools.filter { tool ->
+                com.ai.assistance.operit.core.tools.defaultTool.standard.SubagentPolicy.denial(
+                    tool.name, delegatedInstance, subagentProfile
+                ) == null
+            }
         } catch (e: Exception) {
             AppLogger.e(TAG, "获取工具列表失败", e)
             null

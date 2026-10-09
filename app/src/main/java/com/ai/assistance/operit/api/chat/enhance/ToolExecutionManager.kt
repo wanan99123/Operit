@@ -53,6 +53,8 @@ object ToolExecutionManager {
         val memorySpaceId: String? = null,
         val workspacePath: String? = null,
         val workspaceEnv: String? = null,
+        val subagentProfile: com.ai.assistance.operit.core.tools.defaultTool.standard.SubagentProfile? = null,
+        val onChildToolEvent: (suspend (ToolInvocation, String, ToolResult?) -> Unit)? = null,
     )
 
     private data class ResolvedToolTarget(
@@ -524,6 +526,8 @@ object ToolExecutionManager {
         memorySpaceId: String? = null,
         workspacePath: String? = null,
         workspaceEnv: String? = null,
+        subagentProfile: com.ai.assistance.operit.core.tools.defaultTool.standard.SubagentProfile? = null,
+        onChildToolEvent: (suspend (ToolInvocation, String, ToolResult?) -> Unit)? = null,
     ): ToolExecutionBatch = coroutineScope {
         val orderedResults = OrderedToolResults(invocations.size) { markup ->
             collector.emit(ensureOwnLine(markup))
@@ -556,19 +560,25 @@ object ToolExecutionManager {
                 memorySpaceId = memorySpaceId,
                 workspacePath = workspacePath,
                 workspaceEnv = workspaceEnv,
+                subagentProfile = subagentProfile,
+                onChildToolEvent = onChildToolEvent,
             )
 
         // 1. 顶层工具暴露模式拦截
         val toolExposurePermittedInvocations = mutableListOf<IndexedValue<ToolInvocation>>()
         for ((index, invocation) in invocations.withIndex()) {
-            val delegatedTarget = resolveToolTarget(invocation.tool).tool.name.substringAfterLast(':')
-            val deniedResult = if (isSubTask && delegatedTarget in setOf("run_subagent", "subagent_run")) {
-                ToolResult(invocation.tool.name, false, StringResultData(""), "Nested subagent delegation is disabled")
+            val delegatedTarget = resolveToolTarget(invocation.tool).tool.name
+            val denial = com.ai.assistance.operit.core.tools.defaultTool.standard.SubagentPolicy.denial(
+                delegatedTarget, isSubTask, subagentProfile
+            )
+            val deniedResult = if (denial != null) {
+                ToolResult(invocation.tool.name, false, StringResultData(""), denial)
             } else buildToolExposureDeniedResult(context, invocation, toolExposureMode)
             if (deniedResult == null) {
                 toolExposurePermittedInvocations.add(IndexedValue(index, invocation))
             } else {
                 toolHandler.notifyToolExecutionResult(invocation.tool, deniedResult)
+                onChildToolEvent?.invoke(invocation, "error", deniedResult)
                 orderedResults.complete(index, deniedResult)
             }
         }
@@ -588,6 +598,7 @@ object ToolExecutionManager {
                 roleCardPermittedInvocations.add(IndexedValue(index, invocation))
             } else {
                 toolHandler.notifyToolExecutionResult(invocation.tool, deniedResult)
+                onChildToolEvent?.invoke(invocation, "error", deniedResult)
                 orderedResults.complete(index, deniedResult)
             }
         }
@@ -604,7 +615,9 @@ object ToolExecutionManager {
                     if (hasPermission) {
                         permittedInvocations.add(IndexedValue(index, invocation))
                     } else {
-                        orderedResults.complete(index, checkNotNull(errorResult))
+                        val denied = checkNotNull(errorResult)
+                        onChildToolEvent?.invoke(invocation, "error", denied)
+                        orderedResults.complete(index, denied)
                     }
                 }
 
@@ -615,6 +628,7 @@ object ToolExecutionManager {
                             interception
                         )
                     toolHandler.notifyToolExecutionResult(invocation.tool, interceptedResult)
+                    onChildToolEvent?.invoke(invocation, "error", interceptedResult)
                     toolHandler.notifyToolExecutionFinished(invocation.tool)
                     orderedResults.complete(index, interceptedResult)
                 }
@@ -644,7 +658,7 @@ object ToolExecutionManager {
         val parallelizableToolNames = setOf(
             "list_files", "read_file", "read_file_part", "read_file_full", "file_exists",
             "find_files", "file_info", "grep_code", "calculate", "ffmpeg_info",
-            "visit_web", "download_file"
+            "visit_web", "download_file", "run_subagent"
         )
         val (parallelInvocations, serialInvocations) = injectedInvocations.partition {
             parallelizableToolNames.contains(
@@ -699,6 +713,7 @@ object ToolExecutionManager {
 
         return withContext(toolRuntimeContextThreadLocal.asContextElement(runtimeContext)) {
             try {
+                runtimeContext.onChildToolEvent?.invoke(invocation, "scheduled", null)
                 val executor = toolHandler.getToolExecutorOrActivate(toolName)
                 if (executor == null) {
                     // 如果仍然为 null，则构建错误消息
@@ -712,16 +727,20 @@ object ToolExecutionManager {
                             error = errorMessage
                         )
                     toolHandler.notifyToolExecutionResult(invocation.tool, notAvailableResult)
+                    runtimeContext.onChildToolEvent?.invoke(invocation, "error", notAvailableResult)
                     return@withContext notAvailableResult
                 }
 
                 toolHandler.notifyToolExecutionStarted(invocation.tool)
+                runtimeContext.onChildToolEvent?.invoke(invocation, "started", null)
 
                 val finalResult = aggregateToolResults(
                     displayToolName,
                     executeToolSafely(invocation, executor, toolHandler)
                 )
                 toolHandler.notifyToolExecutionResult(invocation.tool, finalResult)
+                runtimeContext.onChildToolEvent?.invoke(invocation,
+                    if (finalResult.success) "result" else "error", finalResult)
                 return@withContext finalResult
             } finally {
                 toolHandler.notifyToolExecutionFinished(invocation.tool)
@@ -745,6 +764,7 @@ object ToolExecutionManager {
             )
         }
         val lastResult = collectedResults.last()
+        if (displayToolName == "run_subagent") return lastResult
         val combinedResultString = collectedResults.joinToString("\n") { res ->
             (if (res.success) res.result.toString() else "Step error: ${res.error ?: "Unknown error"}").trim()
         }.trim()

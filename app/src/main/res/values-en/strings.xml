@@ -8528,4 +8528,11 @@
     <string name="plan_steps_empty">No plan yet. Progress appears once the model plans a multi-step task.</string>
     <string name="plan_steps_progress">%1$d of %2$d done</string>
     <string name="plan_steps_current">Now: %1$s</string>
+    <string name="plan_subagents_title">Subagents</string>
+    <string name="plan_agent_running">Running</string>
+    <string name="plan_agent_completed">Completed</string>
+    <string name="plan_agent_failed">Failed</string>
+    <string name="plan_agent_timed_out">Timed out</string>
+    <string name="plan_agent_cancelled">Cancelled</string>
+    <string name="plan_agent_tool_progress">Tool calls %1$d / %2$d</string>
 </resources>

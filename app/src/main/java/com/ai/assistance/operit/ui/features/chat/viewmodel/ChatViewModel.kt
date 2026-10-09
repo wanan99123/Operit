@@ -314,6 +314,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     }
 
+    val subagentProgress: StateFlow<List<com.ai.assistance.operit.data.stats.SubagentProgress>> by lazy {
+        combine(currentChatId, com.ai.assistance.operit.data.stats.SubagentProgressStore.sessions) { chatId, sessions ->
+            chatId?.let { sessions[it] }.orEmpty()
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    }
+
 
 
     // 悬浮窗相关
@@ -743,6 +749,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             if (deleted) {
                 pendingMessageQueueStore.removeChat(chatId)
                 com.ai.assistance.operit.data.stats.PlanStepStore.clear(chatId)
+                com.ai.assistance.operit.data.stats.SubagentProgressStore.clear(chatId)
             } else {
                 uiStateDelegate.showToast(context.getString(R.string.chat_locked_cannot_delete))
             }
@@ -750,8 +757,13 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     }
 
     fun clearCurrentChat() {
+        val chatIdToClear = currentChatId.value
         chatHistoryDelegate.clearCurrentChat { deleted ->
             if (deleted) {
+                chatIdToClear?.let { chatId ->
+                    com.ai.assistance.operit.data.stats.PlanStepStore.clear(chatId)
+                    com.ai.assistance.operit.data.stats.SubagentProgressStore.clear(chatId)
+                }
                 uiStateDelegate.showToast(context.getString(R.string.chat_cleared))
             } else {
                 uiStateDelegate.showToast(context.getString(R.string.chat_locked_cannot_delete))

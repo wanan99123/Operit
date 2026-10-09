@@ -172,7 +172,8 @@ fun ChatScreenHeader(
             // 计划步骤：位于 token 圆环左侧
             val planSteps by actualViewModel.planSteps.collectAsState()
             val planChatId by actualViewModel.currentChatId.collectAsState()
-            PlanStepsButton(steps = planSteps, sessionId = planChatId)
+            val subagents by actualViewModel.subagentProgress.collectAsState()
+            PlanStepsButton(steps = planSteps, sessionId = planChatId, subagents = subagents)
 
             // 统计信息
             val maxWindowSize = (maxWindowSizeInK * 1024).toLong().coerceAtLeast(0L)

@@ -59,12 +59,24 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
         }
         val id = UUID.randomUUID().toString()
         var service: EnhancedAIService? = null
-        var toolCalls = 0
+        val toolCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        val startedAt = System.nanoTime()
+        var finalStatus = "cancelled"
+        val parentChatId = parent.callerChatId
+        if (parentChatId.isNullOrBlank()) {
+            slots.release()
+            emit(failure(tool, "Missing parent chat identity"))
+            return@flow
+        }
+        val childToolIds = java.util.IdentityHashMap<com.ai.assistance.operit.data.model.ToolInvocation, String>()
+        com.ai.assistance.operit.data.stats.SubagentProgressStore.start(parentChatId,
+            com.ai.assistance.operit.data.stats.SubagentProgress(id, request.profile.wireName, request.description))
         try {
-            val child = EnhancedAIService.createSubagentInstance(appContext)
+            val child = EnhancedAIService.createSubagentInstance(appContext, request.profile)
             service = child
             emit(ToolResult(tool.name, true, StringResultData(
-                JSONObject().put("id", id).put("status", "running")
+                JSONObject().put("agentId", id).put("agentType", request.profile.wireName)
+                    .put("description", request.description).put("status", "running")
                     .put("message", appContext.getString(R.string.chat_subagent_running)).toString()
             )))
             val result = withTimeout(request.timeoutSeconds * 1000L) {
@@ -76,8 +88,11 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
                 }
                 val prompt = buildString {
                     appendLine("Complete this delegated task and return a concise result to the parent agent:")
-                    appendLine(request.task)
-                    if (request.contextText.isNotBlank()) { appendLine("Provided context:"); appendLine(request.contextText) }
+                    appendLine(request.prompt)
+                    if (request.profile == SubagentProfile.EXPLORE) {
+                        appendLine("READ-ONLY MODE: search and read existing files only. No shell, packages, changes or downloads.")
+                        appendLine("Allowed tools: ${SubagentPolicy.exploreTools.joinToString()}.")
+                    }
                     appendLine("Do not delegate again. Keep tool calls within ${request.maxToolCalls}.")
                     appendLine("Do not ask the user questions. If blocked, state the blocker and stop.")
                     appendLine("Return findings and verification, not hidden reasoning or raw tool markup.")
@@ -100,7 +115,17 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
                     chatModelIndexOverride = modelIndex,
                     memorySpaceIdOverride = parent.memorySpaceId,
                     maxToolCalls = request.maxToolCalls,
-                    onToolInvocation = { toolCalls += 1 },
+                    onChildToolEvent = { invocation, status, _ ->
+                        if (status == "started") toolCalls.incrementAndGet()
+                        val callId = synchronized(childToolIds) {
+                            childToolIds.getOrPut(invocation) { "tool_subagent_${id}_${UUID.randomUUID()}" }
+                        }
+                        val name = if (invocation.tool.name == "package_proxy" || invocation.tool.name == "proxy") {
+                            invocation.tool.parameters.firstOrNull { it.name == "tool_name" }?.value.orEmpty()
+                        } else invocation.tool.name
+                        com.ai.assistance.operit.data.stats.SubagentProgressStore.tool(parentChatId, id,
+                            com.ai.assistance.operit.data.stats.SubagentToolProgress(callId, name, status))
+                    },
                 )).collect { currentCoroutineContext().ensureActive() }
                 currentCoroutineContext().ensureActive()
                 child.getSubagentFailure()?.let { throw IllegalStateException(it) }
@@ -111,26 +136,27 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
                     .replace(ChatMarkupRegex.statusSelfClosingTag, "")
                     .trim().take(16_000)
                 require(summary.isNotBlank()) { "Subagent returned no usable summary" }
-                JSONObject().put("id", id).put("status", "completed").put("summary", summary)
-                    .put("tool_calls", toolCalls)
-                    .put("input_tokens", child.getCurrentInputTokenCount())
-                    .put("output_tokens", child.getCurrentOutputTokenCount())
-                    .put("usage_source", "provider_or_stream_estimate")
-                    .put("usage_note", "Child turn usage; included in provider statistics, not parent chat totals")
+                SubagentOutput.completed(id, request, summary, toolCalls.get(),
+                    (System.nanoTime() - startedAt) / 1_000_000,
+                    child.getCurrentInputTokenCount(), child.getCurrentOutputTokenCount())
             }
+            finalStatus = "completed"
             emit(ToolResult(tool.name, true, StringResultData(result.toString())))
         } catch (error: TimeoutCancellationException) {
             currentCoroutineContext().ensureActive()
+            finalStatus = "timed_out"
             emit(failure(tool, "Subagent timed out after ${request.timeoutSeconds}s"))
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
+            finalStatus = "failed"
             AppLogger.e(TAG, "Delegated task failed: $id", error)
             emit(failure(tool, error.message ?: error.javaClass.simpleName))
         } finally {
             try {
                 withContext(NonCancellable) { service?.closeSubagentInstance() }
             } finally {
+                com.ai.assistance.operit.data.stats.SubagentProgressStore.finish(parentChatId, id, finalStatus)
                 slots.release()
             }
         }

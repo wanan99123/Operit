@@ -44,11 +44,13 @@ object SystemToolPrompts {
         tools = listOf(
             ToolPrompt(
                 name = "run_subagent",
-                description = "Delegate one independent task to a subagent and return its result. Uses the parent model and tool permissions, with only task/context_text as task context. No recursive delegation. Consumes additional model tokens.",
+                description = "Launch one synchronous profile-backed subagent and return a structured result. The parent model and permissions are inherited; the child starts with a fresh context. Background execution is not supported.",
                 parametersStructured = listOf(
-                    ToolParameterSchema(name = "task", type = "string", description = "Concrete task and acceptance criteria.", required = true),
-                    ToolParameterSchema(name = "context_text", type = "string", description = "Explicit context; parent conversation is not copied automatically.", required = false),
-                    ToolParameterSchema(name = "max_tool_calls", type = "integer", description = "Hard model tool-call limit: 1..32, default 8.", required = false, default = "8"),
+                    ToolParameterSchema(name = "description", type = "string", description = "Short 3-5 word task description.", required = true),
+                    ToolParameterSchema(name = "prompt", type = "string", description = "Self-contained task for the child agent.", required = true),
+                    ToolParameterSchema(name = "subagent_type", type = "string", description = "general-purpose or Explore (read-only).", required = false, default = "general-purpose"),
+                    ToolParameterSchema(name = "run_in_background", type = "boolean", description = "Must be false; background execution is not supported.", required = false, default = "false"),
+                    ToolParameterSchema(name = "max_tool_calls", type = "integer", description = "Hard child tool-call limit: 1..32, default 8.", required = false, default = "8"),
                     ToolParameterSchema(name = "timeout_seconds", type = "integer", description = "Time limit in seconds: 10..600, default 180.", required = false, default = "180"),
                 )
             ),
@@ -91,11 +93,13 @@ object SystemToolPrompts {
         tools = listOf(
             ToolPrompt(
                 name = "run_subagent",
-                description = "将一个独立任务交给子智能体执行并返回结果。自动沿用父请求模型和工具权限；上下文只包含 task/context_text；子任务不能递归委托。可能额外消耗模型 Token。",
+                description = "启动一个同步的配置文件型子智能体并返回结构化结果。继承父模型和权限，子任务使用全新上下文。当前不支持后台执行。",
                 parametersStructured = listOf(
-                    ToolParameterSchema(name = "task", type = "string", description = "明确任务及验收要求。", required = true),
-                    ToolParameterSchema(name = "context_text", type = "string", description = "必要上下文，不会自动复制父会话。", required = false),
-                    ToolParameterSchema(name = "max_tool_calls", type = "integer", description = "模型工具调用硬上限，1..32，默认8。", required = false, default = "8"),
+                    ToolParameterSchema(name = "description", type = "string", description = "简短的 3-5 个词任务描述。", required = true),
+                    ToolParameterSchema(name = "prompt", type = "string", description = "给子智能体的自包含任务。", required = true),
+                    ToolParameterSchema(name = "subagent_type", type = "string", description = "general-purpose 或 Explore（只读）。", required = false, default = "general-purpose"),
+                    ToolParameterSchema(name = "run_in_background", type = "boolean", description = "必须为 false；当前不支持后台执行。", required = false, default = "false"),
+                    ToolParameterSchema(name = "max_tool_calls", type = "integer", description = "子任务工具调用硬上限，1..32，默认8。", required = false, default = "8"),
                     ToolParameterSchema(name = "timeout_seconds", type = "integer", description = "执行超时秒数，10..600，默认180。", required = false, default = "180"),
                 )
             ),

@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.PlanStep
 import com.ai.assistance.operit.data.model.PlanStepStatus
+import com.ai.assistance.operit.data.stats.SubagentProgress
 
 /**
  * Plan-steps affordance for the chat header, placed immediately left of the token gauge.
@@ -46,9 +47,15 @@ import com.ai.assistance.operit.data.model.PlanStepStatus
  * than an animated indicator so "currently working on" never reads as a loading spinner.
  */
 @Composable
-fun PlanStepsButton(steps: List<PlanStep>, sessionId: String?, modifier: Modifier = Modifier) {
+fun PlanStepsButton(
+    steps: List<PlanStep>,
+    sessionId: String?,
+    modifier: Modifier = Modifier,
+    subagents: List<SubagentProgress> = emptyList()
+) {
     var expanded by remember(sessionId) { mutableStateOf(false) }
     val completedCount = steps.count { it.status == PlanStepStatus.COMPLETED }
+    val runningAgents = subagents.count { it.status == "running" }
     val activeStep =
         steps.firstOrNull { it.status == PlanStepStatus.IN_PROGRESS }
             ?: steps.firstOrNull { it.status != PlanStepStatus.COMPLETED }
@@ -68,6 +75,7 @@ fun PlanStepsButton(steps: List<PlanStep>, sessionId: String?, modifier: Modifie
                 contentDescription = stringResource(R.string.plan_steps_title),
                 tint =
                     when {
+                        runningAgents > 0 -> MaterialTheme.colorScheme.primary
                         steps.isEmpty() ->
                             MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         activeStep != null -> MaterialTheme.colorScheme.primary
@@ -80,6 +88,13 @@ fun PlanStepsButton(steps: List<PlanStep>, sessionId: String?, modifier: Modifie
                     text = "$completedCount/${steps.size}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (runningAgents > 0) {
+                Text(
+                    text = "+$runningAgents",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
@@ -134,6 +149,62 @@ fun PlanStepsButton(steps: List<PlanStep>, sessionId: String?, modifier: Modifie
                     steps.forEach { PlanStepRow(it) }
                 }
             }
+            if (subagents.isNotEmpty()) {
+                HorizontalDivider()
+                Text(
+                    stringResource(R.string.plan_subagents_title),
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                )
+                subagents.asReversed().forEach { SubagentProgressRow(it) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubagentProgressRow(agent: SubagentProgress) {
+    val statusText = stringResource(
+        when (agent.status) {
+            "running" -> R.string.plan_agent_running
+            "completed" -> R.string.plan_agent_completed
+            "failed" -> R.string.plan_agent_failed
+            "timed_out" -> R.string.plan_agent_timed_out
+            "cancelled" -> R.string.plan_agent_cancelled
+            else -> error("Unknown subagent status: ${agent.status}")
+        }
+    )
+    val statusColor = when (agent.status) {
+        "running" -> MaterialTheme.colorScheme.primary
+        "completed" -> MaterialTheme.colorScheme.tertiary
+        "failed", "timed_out" -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text = agent.description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = "${agent.agentType} · $statusText",
+            style = MaterialTheme.typography.labelSmall,
+            color = statusColor
+        )
+        Text(
+            text = stringResource(R.string.plan_agent_tool_progress,
+                agent.tools.count { it.status == "result" || it.status == "error" },
+                agent.tools.size),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        agent.tools.takeLast(3).forEach { tool ->
+            Text(
+                text = tool.name,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (tool.status == "error") MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
