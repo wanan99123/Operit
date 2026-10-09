@@ -8518,4 +8518,19 @@
     <string name="market_version_too_low_message">Current client version %1$s is lower than the minimum required version %2$s for this resource. Please update the client before downloading.</string>
     <string name="market_version_too_high_message">Current client version %1$s is higher than the maximum supported version %2$s for this resource. Please use a supported client version.</string>
     <string name="thinking_config_invalid_json">Invalid Thinking Configuration</string>
+
+    <!-- Chat footer token meter and bounded subagent delegation. -->
+    <string name="chat_meter_title">Token usage</string>
+    <string name="chat_meter_unknown">Unknown</string>
+    <string name="chat_meter_estimate">≈%1$s</string>
+    <string name="chat_meter_context">Context %1$s/%2$s</string>
+    <string name="chat_meter_input">In %1$s</string>
+    <string name="chat_meter_output">Out %1$s</string>
+    <string name="chat_meter_cache">Cache %1$s</string>
+    <string name="chat_meter_close">Close</string>
+    <string name="chat_meter_explanation">Input, output and cache refer to the latest model request; cumulative counts refer to this chat. ≈ marks streaming estimates. Unknown means the provider did not report a value. Cached tokens are already included in input.</string>
+    <string name="chat_subagent_action">Delegate to subagent</string>
+    <string name="chat_subagent_accepted">Subtask accepted</string>
+    <string name="chat_subagent_running">Subagent running</string>
+    <string name="chat_subagent_completed">Subagent completed</string>
 </resources>

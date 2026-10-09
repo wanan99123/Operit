@@ -43,6 +43,16 @@ object SystemToolPrompts {
         categoryName = "Available tools",
         tools = listOf(
             ToolPrompt(
+                name = "run_subagent",
+                description = "Delegate one independent task to a subagent and return its result. Uses the parent model and tool permissions, with only task/context_text as task context. No recursive delegation. Consumes additional model tokens.",
+                parametersStructured = listOf(
+                    ToolParameterSchema(name = "task", type = "string", description = "Concrete task and acceptance criteria.", required = true),
+                    ToolParameterSchema(name = "context_text", type = "string", description = "Explicit context; parent conversation is not copied automatically.", required = false),
+                    ToolParameterSchema(name = "max_tool_calls", type = "integer", description = "Hard model tool-call limit: 1..32, default 8.", required = false, default = "8"),
+                    ToolParameterSchema(name = "timeout_seconds", type = "integer", description = "Time limit in seconds: 10..600, default 180.", required = false, default = "180"),
+                )
+            ),
+            ToolPrompt(
                 name = "sleep",
                 description = "Demonstration tool that pauses briefly.",
                 parametersStructured = listOf(
@@ -67,6 +77,16 @@ object SystemToolPrompts {
     val basicToolsCn = SystemToolPromptCategory(
         categoryName = "可用工具",
         tools = listOf(
+            ToolPrompt(
+                name = "run_subagent",
+                description = "将一个独立任务交给子智能体执行并返回结果。自动沿用父请求模型和工具权限；上下文只包含 task/context_text；子任务不能递归委托。可能额外消耗模型 Token。",
+                parametersStructured = listOf(
+                    ToolParameterSchema(name = "task", type = "string", description = "明确任务及验收要求。", required = true),
+                    ToolParameterSchema(name = "context_text", type = "string", description = "必要上下文，不会自动复制父会话。", required = false),
+                    ToolParameterSchema(name = "max_tool_calls", type = "integer", description = "模型工具调用硬上限，1..32，默认8。", required = false, default = "8"),
+                    ToolParameterSchema(name = "timeout_seconds", type = "integer", description = "执行超时秒数，10..600，默认180。", required = false, default = "180"),
+                )
+            ),
             ToolPrompt(
                 name = "sleep",
                 description = "演示工具，短暂暂停。",

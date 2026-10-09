@@ -2,6 +2,7 @@ package com.ai.assistance.operit.services.core
 
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
+import com.ai.assistance.operit.data.stats.ChatRequestTokenUsage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +35,10 @@ class TokenStatisticsDelegate(
     private val _perRequestTokenCount = MutableStateFlow<Pair<Long, Long>?>(null)
     val perRequestTokenCountFlow: StateFlow<Pair<Long, Long>?> = _perRequestTokenCount.asStateFlow()
 
+    private val _requestTokenUsage = MutableStateFlow<ChatRequestTokenUsage?>(null)
+    val requestTokenUsageFlow: StateFlow<ChatRequestTokenUsage?> = _requestTokenUsage.asStateFlow()
+    private val requestTokenUsageByChatKey = ConcurrentHashMap<String, ChatRequestTokenUsage>()
+
     // --- Internal State ---
     private var lastCurrentWindowSize = 0L
     private var tokenCollectorJob: Job? = null
@@ -64,6 +69,7 @@ class TokenStatisticsDelegate(
         _cumulativeOutputTokens.value = output
         _currentWindowSize.value = window
         _perRequestTokenCount.value = perRequest
+        _requestTokenUsage.value = requestTokenUsageByChatKey[key]
         lastCurrentWindowSize = window
     }
 
@@ -80,6 +86,11 @@ class TokenStatisticsDelegate(
         if (isActiveKey(key)) {
             _perRequestTokenCount.value = counts
         }
+    }
+
+    private fun handleRequestUsage(key: String, usage: ChatRequestTokenUsage?) {
+        if (usage == null) requestTokenUsageByChatKey.remove(key) else requestTokenUsageByChatKey[key] = usage
+        if (isActiveKey(key)) _requestTokenUsage.value = usage
     }
 
     private fun handleRequestWindowEstimate(
@@ -103,6 +114,7 @@ class TokenStatisticsDelegate(
         tokenCollectorJob?.cancel() // Cancel previous collector if any
         val service = getEnhancedAiService() ?: return // Service not ready
         tokenCollectorJob = coroutineScope.launch(Dispatchers.IO) {
+            launch { service.requestTokenUsage.collect { handleRequestUsage(chatKey(null), it) } }
             launch {
                 service.perRequestTokenCounts.collect { counts ->
                     handlePerRequestCounts(
@@ -134,6 +146,7 @@ class TokenStatisticsDelegate(
         tokenCollectorJobsByChatKey[key]?.cancel()
         tokenCollectorJobsByChatKey[key] =
             coroutineScope.launch(Dispatchers.IO) {
+                launch { service.requestTokenUsage.collect { handleRequestUsage(key, it) } }
                 launch {
                     service.perRequestTokenCounts.collect { counts ->
                         handlePerRequestCounts(
@@ -163,12 +176,14 @@ class TokenStatisticsDelegate(
         _cumulativeOutputTokens.value = 0L
         _currentWindowSize.value = 0L
         _perRequestTokenCount.value = null
+        _requestTokenUsage.value = null
         lastCurrentWindowSize = 0L
 
         cumulativeInputTokensByChatKey.clear()
         cumulativeOutputTokensByChatKey.clear()
         lastWindowSizeByChatKey.clear()
         perRequestTokenCountByChatKey.clear()
+        requestTokenUsageByChatKey.clear()
 
         // 同时重置服务中的token计数
         val services = buildSet {

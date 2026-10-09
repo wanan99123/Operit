@@ -1733,6 +1733,11 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             executor = { tool -> runBlocking(Dispatchers.IO) { chatManagerTool.callChatModel(tool) } }
     )
 
+    handler.registerTool(
+        name = "run_subagent",
+        descriptionGenerator = { _ -> s(R.string.chat_subagent_action) },
+        executor = com.ai.assistance.operit.core.tools.defaultTool.standard.StandardSubagentTool(context)
+    )
     // 列出所有角色卡
     handler.registerTool(
             name = "list_character_cards",

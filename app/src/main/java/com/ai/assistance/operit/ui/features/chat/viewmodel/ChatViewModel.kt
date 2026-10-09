@@ -310,6 +310,8 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
 
 
+    val requestTokenUsage: StateFlow<com.ai.assistance.operit.data.stats.ChatRequestTokenUsage?> by lazy { tokenStatsDelegate.requestTokenUsageFlow }
+
     // 悬浮窗相关
     val isFloatingMode: StateFlow<Boolean> by lazy { floatingWindowDelegate.isFloatingMode }
     val moveTaskToBackEvents: SharedFlow<Unit> by lazy { floatingWindowDelegate.moveTaskToBackEvents }

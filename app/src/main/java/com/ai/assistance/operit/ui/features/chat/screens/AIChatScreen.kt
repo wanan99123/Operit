@@ -1082,50 +1082,53 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 }
                                 .graphicsLayer { translationY = -inputBarTranslationYPx }
                     ) {
-                        ChatInputBottomBar(
-                                actualViewModel = actualViewModel,
-                                inputStyle = inputStyle,
-                                currentChatId = currentChatId,
-                                inputMenuRuntime = chatViewRuntime,
-                                enableEnterToSend = enableEnterToSend,
-                                isLoading = isLoading,
-                                inputState = inputProcessingState,
-                                hasBackgroundImage = effectiveHasBackgroundImage,
-                                chatInputTransparent = chatInputTransparent,
-                                chatInputFloating = chatInputFloating,
-                                chatInputLiquidGlass = chatInputLiquidGlass,
-                                chatInputWaterGlass = chatInputWaterGlass,
-                                showInputProcessingStatus = showInputProcessingStatus,
-                                enableTools = enableTools,
-                                isWorkspaceOpen = isWorkspaceOpen,
-                                enableThinkingMode = enableThinkingMode,
-                                thinkingOptionId = thinkingOptionId,
-                                enableMaxContextMode = enableMaxContextMode,
-                                featureStates = featureStates,
-                                enableMemoryAutoUpdate = enableMemoryAutoUpdate,
-                                isAutoReadEnabled = isAutoReadEnabled,
-                                disableStreamOutput = disableStreamOutput,
-                                disableUserPreferenceDescription =
-                                        disableUserPreferenceDescription,
-                                onNavigateToMemoryBase = onNavigateToMemoryBase,
-                                onNavigateToPackageManager = onNavigateToPackageManager,
-                                toolPromptVisibility = toolPromptVisibility,
-                                toolPromptOrder = toolPromptOrder,
-                                onSaveToolOrder = { order ->
-                                    actualViewModel.saveToolPromptOrder(order)
-                                },
-                                onNavigateToModelConfig = onNavigateToModelConfig,
-                                characterCardBoundChatModelConfigId =
-                                        characterCardBoundChatModelConfigId,
-                                characterCardBoundChatModelIndex =
-                                        characterCardBoundChatModelIndex,
-                                characterCardBoundMemoryProfileId =
-                                        characterCardBoundMemoryProfileId,
-                                onShowMemoryFolderDialog = {
-                                    showMemoryFolderDialog = true
-                                },
-                                onRequestAutoScrollToBottom = requestAutoScrollToBottom,
-                        )
+                        Column(Modifier.fillMaxWidth()) {
+                            ChatInputBottomBar(
+                                    actualViewModel = actualViewModel,
+                                    inputStyle = inputStyle,
+                                    currentChatId = currentChatId,
+                                    inputMenuRuntime = chatViewRuntime,
+                                    enableEnterToSend = enableEnterToSend,
+                                    isLoading = isLoading,
+                                    inputState = inputProcessingState,
+                                    hasBackgroundImage = effectiveHasBackgroundImage,
+                                    chatInputTransparent = chatInputTransparent,
+                                    chatInputFloating = chatInputFloating,
+                                    chatInputLiquidGlass = chatInputLiquidGlass,
+                                    chatInputWaterGlass = chatInputWaterGlass,
+                                    showInputProcessingStatus = showInputProcessingStatus,
+                                    enableTools = enableTools,
+                                    isWorkspaceOpen = isWorkspaceOpen,
+                                    enableThinkingMode = enableThinkingMode,
+                                    thinkingOptionId = thinkingOptionId,
+                                    enableMaxContextMode = enableMaxContextMode,
+                                    featureStates = featureStates,
+                                    enableMemoryAutoUpdate = enableMemoryAutoUpdate,
+                                    isAutoReadEnabled = isAutoReadEnabled,
+                                    disableStreamOutput = disableStreamOutput,
+                                    disableUserPreferenceDescription =
+                                            disableUserPreferenceDescription,
+                                    onNavigateToMemoryBase = onNavigateToMemoryBase,
+                                    onNavigateToPackageManager = onNavigateToPackageManager,
+                                    toolPromptVisibility = toolPromptVisibility,
+                                    toolPromptOrder = toolPromptOrder,
+                                    onSaveToolOrder = { order ->
+                                        actualViewModel.saveToolPromptOrder(order)
+                                    },
+                                    onNavigateToModelConfig = onNavigateToModelConfig,
+                                    characterCardBoundChatModelConfigId =
+                                            characterCardBoundChatModelConfigId,
+                                    characterCardBoundChatModelIndex =
+                                            characterCardBoundChatModelIndex,
+                                    characterCardBoundMemoryProfileId =
+                                            characterCardBoundMemoryProfileId,
+                                    onShowMemoryFolderDialog = {
+                                        showMemoryFolderDialog = true
+                                    },
+                                    onRequestAutoScrollToBottom = requestAutoScrollToBottom,
+                            )
+                            ChatTokenMeter(viewModel = actualViewModel)
+                        }
                     }
 
                     CharacterSelectorPanel(

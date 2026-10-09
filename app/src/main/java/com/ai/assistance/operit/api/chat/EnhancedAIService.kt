@@ -11,6 +11,7 @@ import com.ai.assistance.operit.api.chat.enhance.ConversationService
 import com.ai.assistance.operit.api.chat.enhance.FileBindingService
 import com.ai.assistance.operit.api.chat.enhance.MultiServiceManager
 import com.ai.assistance.operit.api.chat.enhance.ToolExecutionManager
+import com.ai.assistance.operit.api.chat.enhance.ToolCallBudget
 import com.ai.assistance.operit.api.chat.llmprovider.AIService
 import com.ai.assistance.operit.core.chat.logMessageTiming
 import com.ai.assistance.operit.core.chat.messageTimingNow
@@ -29,6 +30,7 @@ import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.climode.CliToolModeSupport
 import com.ai.assistance.operit.core.tools.climode.ToolExposureMode
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
+import com.ai.assistance.operit.data.stats.ChatRequestTokenUsage
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
@@ -63,6 +65,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -94,7 +99,10 @@ import com.ai.assistance.operit.util.LocaleUtils
  * Enhanced AI service that provides advanced conversational capabilities by integrating various
  * components like tool execution, conversation management, user preferences, and problem library.
  */
-class EnhancedAIService private constructor(private val context: Context) {
+class EnhancedAIService private constructor(
+    private val context: Context,
+    private val delegatedInstance: Boolean = false,
+) {
     data class TurnTokenSnapshot(
         val inputTokens: Long,
         val outputTokens: Long,
@@ -124,6 +132,10 @@ class EnhancedAIService private constructor(private val context: Context) {
                                 }
                     }
         }
+
+        /** A subagent must never reuse the parent's counters, streams or cancellation state. */
+        fun createSubagentInstance(context: Context): EnhancedAIService =
+            EnhancedAIService(context.applicationContext, delegatedInstance = true)
 
         fun getChatInstance(context: Context, chatId: String): EnhancedAIService {
             val appContext = context.applicationContext
@@ -351,7 +363,8 @@ class EnhancedAIService private constructor(private val context: Context) {
         var chatModelIndexOverride: Int? = null,
         var memorySpaceIdOverride: String? = null,
         var stream: Boolean = true,
-        var disableWarning: Boolean = false
+        var disableWarning: Boolean = false,
+        var maxToolCalls: Int? = null,
     )
 
     // MultiServiceManager 管理不同功能的 AIService 实例
@@ -397,6 +410,8 @@ class EnhancedAIService private constructor(private val context: Context) {
     // Per-request token counts
     private val _perRequestTokenCounts = MutableStateFlow<Pair<Long, Long>?>(null)
     val perRequestTokenCounts: StateFlow<Pair<Long, Long>?> = _perRequestTokenCounts.asStateFlow()
+    private val _requestTokenUsage = MutableStateFlow<ChatRequestTokenUsage?>(null)
+    val requestTokenUsage: StateFlow<ChatRequestTokenUsage?> = _requestTokenUsage.asStateFlow()
 
     // Stable request window estimate for the next model hop.
     private val _requestWindowEstimate = MutableStateFlow<Long?>(null)
@@ -430,7 +445,10 @@ class EnhancedAIService private constructor(private val context: Context) {
         val isConversationActive: AtomicBoolean = AtomicBoolean(true),
         val conversationHistory: MutableList<PromptTurn>,
         val eventChannel: MutableSharedStream<TextStreamEvent>,
-        var modelExecutionSnapshot: ModelExecutionSnapshot? = null
+        var modelExecutionSnapshot: ModelExecutionSnapshot? = null,
+        val toolCallBudget: ToolCallBudget = ToolCallBudget(null),
+        val workspacePath: String? = null,
+        val workspaceEnv: String? = null,
     )
 
     private val activeExecutionContexts = ConcurrentHashMap<Int, MessageExecutionContext>()
@@ -517,6 +535,24 @@ class EnhancedAIService private constructor(private val context: Context) {
 
     // 存储最后的回复内容，用于通知
     private var lastReplyContent: String? = null
+    @Volatile private var delegatedFailure: String? = null
+    private var delegatedFinalReply: String? = null
+    fun getSubagentFinalReply(): String? = delegatedFinalReply
+    fun getSubagentFailure(): String? = delegatedFailure
+
+    suspend fun closeSubagentInstance() {
+        check(delegatedInstance) { "Cannot dispose a shared chat service as a subagent" }
+        try {
+            cancelConversation()
+            withContext(NonCancellable) {
+                multiServiceManager.cancelAllStreaming()
+                multiServiceManager.refreshAllServices()
+            }
+        } finally {
+            initScope.cancel()
+            toolProcessingScope.cancel()
+        }
+    }
 
     init {
         com.ai.assistance.operit.api.chat.library.MemoryLibrary.initialize(context)
@@ -903,6 +939,11 @@ class EnhancedAIService private constructor(private val context: Context) {
     suspend fun sendMessage(
         options: SendMessageOptions
     ): Stream<String> {
+        require(!delegatedInstance || options.isSubTask) { "Delegated services only accept subtask requests" }
+        delegatedFailure = null
+        delegatedFinalReply = null
+        _requestTokenUsage.value = null
+        lastReplyContent = null
         val message = options.message
         val chatId = options.chatId
         val chatHistory = options.chatHistory
@@ -966,7 +1007,10 @@ class EnhancedAIService private constructor(private val context: Context) {
                 MessageExecutionContext(
                     executionId = nextExecutionContextId.incrementAndGet(),
                     conversationHistory = chatHistory.toMutableList(),
-                    eventChannel = eventChannel
+                    eventChannel = eventChannel,
+                    toolCallBudget = ToolCallBudget(options.maxToolCalls),
+                    workspacePath = options.workspacePath,
+                    workspaceEnv = options.workspaceEnv,
                 )
             registerExecutionContext(execContext)
             var hadFatalError = false
@@ -1040,6 +1084,7 @@ class EnhancedAIService private constructor(private val context: Context) {
 
                     // 清空之前的单次请求token计数
                     _perRequestTokenCounts.value = null
+                    _requestTokenUsage.value = null
                     currentRequestInputTokenCount = 0L
                     currentRequestOutputTokenCount = 0L
                     currentRequestCachedInputTokenCount = 0L
@@ -1131,6 +1176,21 @@ class EnhancedAIService private constructor(private val context: Context) {
                                         currentRequestOutputTokenCount = output.coerceAtLeast(0)
                                         currentRequestCachedInputTokenCount = cachedInput.coerceAtLeast(0)
                                         _perRequestTokenCounts.value = Pair(input, output)
+                                        if (isExecutionContextActive(execContext)) {
+                                            _requestTokenUsage.value = (_requestTokenUsage.value ?: ChatRequestTokenUsage())
+                                                .withEstimate(input, output)
+                                        }
+                                    },
+                                    onUsageReported = { usage, attempt ->
+                                        if (isExecutionContextActive(execContext)) {
+                                            _requestTokenUsage.value = (_requestTokenUsage.value ?: ChatRequestTokenUsage())
+                                                .withProviderUsage(usage, attempt)
+                                        }
+                                    },
+                                    onUsageFinalized = { attempt ->
+                                        if (isExecutionContextActive(execContext)) {
+                                            _requestTokenUsage.value = _requestTokenUsage.value?.finalized(attempt)
+                                        }
                                     },
                                      onNonFatalError = onNonFatalError,
                             )
@@ -1261,6 +1321,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     }
                 } else {
                     hadFatalError = true
+                    if (delegatedInstance) delegatedFailure = e.message ?: e.javaClass.simpleName
                     // Handle any exceptions
                     AppLogger.e(TAG, "发送消息时发生错误: ${e.message}", e)
                     if (!providerStreamCollectionStarted) {
@@ -1998,7 +2059,10 @@ class EnhancedAIService private constructor(private val context: Context) {
                 stage = "enhanced.processStreamCompletion.complete",
                 startTimeMs = startTime
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
+            if (delegatedInstance) delegatedFailure = e.message ?: e.javaClass.simpleName
             // Catch any exceptions in the processing flow
             AppLogger.e(TAG, "处理流完成时发生错误", e)
             withContext(Dispatchers.Main) {
@@ -2028,6 +2092,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         
         // 保存最后的回复内容用于通知
         lastReplyContent = context.roundManager.getDisplayContent()
+        if (delegatedInstance) delegatedFinalReply = context.roundManager.getCurrentRoundContent()
 
         // Ensure input processing state is updated to completed
         if (!isSubTask) {
@@ -2097,6 +2162,12 @@ class EnhancedAIService private constructor(private val context: Context) {
         disableWarning: Boolean = false
     ) {
         val startTime = messageTimingNow()
+        if (!context.toolCallBudget.reserve(toolInvocations.size)) {
+            delegatedFailure = "Subagent tool-call budget exhausted before this batch"
+            finalizeAssistantResponse(context, context.roundManager.getDisplayContent(), false,
+                onNonFatalError, isSubTask, chatId, characterName, avatarUri, notifyReplyOverride, memorySpaceIdOverride)
+            return
+        }
 
         toolInvocations.forEach { invocation ->
             onToolInvocation?.invoke(invocation.tool.name)
@@ -2109,7 +2180,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             }
         }
 
-        val processToolJob = toolProcessingScope.launch {
+        val processToolJob = toolProcessingScope.async {
             val modelSnapshot = getModelExecutionSnapshot(
                 context,
                 functionType,
@@ -2126,7 +2197,13 @@ class EnhancedAIService private constructor(private val context: Context) {
                 toolExposureMode = ToolExposureMode.resolve(config.apiProviderType),
                 callerName = characterName,
                 callerChatId = chatId,
-                callerCardId = roleCardId
+                callerCardId = roleCardId,
+                isSubTask = isSubTask,
+                chatModelConfigId = config.id,
+                chatModelIndex = modelSnapshot.lease.modelIndex,
+                memorySpaceId = memorySpaceIdOverride,
+                workspacePath = context.workspacePath,
+                workspaceEnv = context.workspaceEnv,
             )
 
             if (toolBatch.results.isNotEmpty()) {
@@ -2181,8 +2258,11 @@ class EnhancedAIService private constructor(private val context: Context) {
         toolExecutionJobs[invocationId] = processToolJob
 
         try {
-            processToolJob.join()
+            processToolJob.await()
+            currentCoroutineContext().ensureActive()
         } finally {
+            // The work scope is separate: parent cancellation must not leave a child running.
+            withContext(NonCancellable) { processToolJob.cancelAndJoin() }
             toolExecutionJobs.remove(invocationId)
         }
     }
@@ -2324,6 +2404,7 @@ class EnhancedAIService private constructor(private val context: Context) {
 
         // 清空之前的单次请求token计数
         _perRequestTokenCounts.value = null
+        _requestTokenUsage.value = null
         currentRequestInputTokenCount = 0L
         currentRequestOutputTokenCount = 0L
         currentRequestCachedInputTokenCount = 0L
@@ -2346,6 +2427,21 @@ class EnhancedAIService private constructor(private val context: Context) {
                                     currentRequestOutputTokenCount = output.coerceAtLeast(0)
                                     currentRequestCachedInputTokenCount = cachedInput.coerceAtLeast(0)
                                     _perRequestTokenCounts.value = Pair(input, output)
+                                    if (isExecutionContextActive(context)) {
+                                        _requestTokenUsage.value = (_requestTokenUsage.value ?: ChatRequestTokenUsage())
+                                            .withEstimate(input, output)
+                                    }
+                                },
+                                onUsageReported = { usage, attempt ->
+                                    if (isExecutionContextActive(context)) {
+                                        _requestTokenUsage.value = (_requestTokenUsage.value ?: ChatRequestTokenUsage())
+                                            .withProviderUsage(usage, attempt)
+                                    }
+                                },
+                                onUsageFinalized = { attempt ->
+                                    if (isExecutionContextActive(context)) {
+                                        _requestTokenUsage.value = _requestTokenUsage.value?.finalized(attempt)
+                                    }
                                 },
                                  onNonFatalError = onNonFatalError,
                         )
@@ -2484,6 +2580,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 AppLogger.d(TAG, "处理工具执行结果被取消")
                 throw e
             } catch (e: Exception) {
+                if (delegatedInstance) delegatedFailure = e.message ?: e.javaClass.simpleName
                 AppLogger.e(TAG, "处理工具执行结果时出错", e)
                 withContext(Dispatchers.Main) {
                     _inputProcessingState.value =
@@ -2544,6 +2641,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         currentRequestCachedInputTokenCount = 0L
         _perRequestTokenCounts.value =
             Pair(accumulatedInputTokenCount, accumulatedOutputTokenCount)
+        _requestTokenUsage.value = null // A restored turn aggregate is not one provider request.
         AppLogger.d(
             TAG,
             "Current turn token counts overridden. Input: $accumulatedInputTokenCount, Output: $accumulatedOutputTokenCount, CachedInput: $accumulatedCachedInputTokenCount"
@@ -2853,6 +2951,7 @@ class EnhancedAIService private constructor(private val context: Context) {
 
         // Reset per-request token counts
         _perRequestTokenCounts.value = null
+        _requestTokenUsage.value = null
         accumulatedInputTokenCount = 0L
         accumulatedOutputTokenCount = 0L
         accumulatedCachedInputTokenCount = 0L
@@ -2865,7 +2964,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         currentCompleteCallback = null
 
         // 停止AI服务并关闭屏幕常亮
-        stopAiService()
+        if (!delegatedInstance) stopAiService()
 
         AppLogger.d(TAG, "Conversation cancellation complete")
     }

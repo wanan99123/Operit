@@ -98,6 +98,13 @@ class AIToolHandler private constructor(private val context: Context) {
 
     /** Ask hooks whether the tool call should continue. */
     fun checkToolInterception(tool: AITool): AIToolHookDecision {
+        val runtime = com.ai.assistance.operit.api.chat.enhance.ToolExecutionManager.currentToolRuntimeContext()
+        val target = if (tool.name == "package_proxy" || tool.name == "proxy") {
+            tool.parameters.firstOrNull { it.name == "tool_name" }?.value.orEmpty()
+        } else tool.name
+        if (runtime?.isSubTask == true && target.substringAfterLast(':') in setOf("run_subagent", "subagent_run")) {
+            return AIToolHookDecision.Block("Nested subagent delegation is disabled")
+        }
         toolHooks.forEach { hook ->
             val decision =
                     try {

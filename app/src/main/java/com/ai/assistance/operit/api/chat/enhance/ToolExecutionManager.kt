@@ -45,7 +45,14 @@ object ToolExecutionManager {
 
     data class ToolRuntimeContext(
         val callerCardId: String? = null,
-        val toolExposureMode: ToolExposureMode = ToolExposureMode.FULL
+        val toolExposureMode: ToolExposureMode = ToolExposureMode.FULL,
+        val isSubTask: Boolean = false,
+        val callerChatId: String? = null,
+        val chatModelConfigId: String? = null,
+        val chatModelIndex: Int? = null,
+        val memorySpaceId: String? = null,
+        val workspacePath: String? = null,
+        val workspaceEnv: String? = null,
     )
 
     private data class ResolvedToolTarget(
@@ -510,7 +517,13 @@ object ToolExecutionManager {
         toolExposureMode: ToolExposureMode = ToolExposureMode.FULL,
         callerName: String? = null,
         callerChatId: String? = null,
-        callerCardId: String? = null
+        callerCardId: String? = null,
+        isSubTask: Boolean = false,
+        chatModelConfigId: String? = null,
+        chatModelIndex: Int? = null,
+        memorySpaceId: String? = null,
+        workspacePath: String? = null,
+        workspaceEnv: String? = null,
     ): ToolExecutionBatch = coroutineScope {
         val orderedResults = OrderedToolResults(invocations.size) { markup ->
             collector.emit(ensureOwnLine(markup))
@@ -535,13 +548,23 @@ object ToolExecutionManager {
         val toolRuntimeContext =
             ToolRuntimeContext(
                 callerCardId = callerCardId,
-                toolExposureMode = toolExposureMode
+                toolExposureMode = toolExposureMode,
+                isSubTask = isSubTask,
+                callerChatId = callerChatId,
+                chatModelConfigId = chatModelConfigId,
+                chatModelIndex = chatModelIndex,
+                memorySpaceId = memorySpaceId,
+                workspacePath = workspacePath,
+                workspaceEnv = workspaceEnv,
             )
 
         // 1. 顶层工具暴露模式拦截
         val toolExposurePermittedInvocations = mutableListOf<IndexedValue<ToolInvocation>>()
         for ((index, invocation) in invocations.withIndex()) {
-            val deniedResult = buildToolExposureDeniedResult(context, invocation, toolExposureMode)
+            val delegatedTarget = resolveToolTarget(invocation.tool).tool.name.substringAfterLast(':')
+            val deniedResult = if (isSubTask && delegatedTarget in setOf("run_subagent", "subagent_run")) {
+                ToolResult(invocation.tool.name, false, StringResultData(""), "Nested subagent delegation is disabled")
+            } else buildToolExposureDeniedResult(context, invocation, toolExposureMode)
             if (deniedResult == null) {
                 toolExposurePermittedInvocations.add(IndexedValue(index, invocation))
             } else {

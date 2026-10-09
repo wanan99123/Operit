@@ -215,6 +215,14 @@ jobs:
           chmod +x ./gradlew
           ./gradlew "$gradle_task" --stacktrace --no-daemon
 
+      - name: Test chat meter and subagent contracts
+        run: |
+          ./gradlew :app:testDebugUnitTest --tests 'com.ai.assistance.operit.data.stats.ChatRequestTokenUsageTest' --tests 'com.ai.assistance.operit.api.chat.enhance.ToolCallBudgetTest' --tests 'com.ai.assistance.operit.core.tools.defaultTool.standard.SubagentRequestTest' --stacktrace --no-daemon
+      - name: Record APK hashes and source revision
+        shell: bash
+        run: |
+          git rev-parse HEAD > app/build/outputs/SOURCE-COMMIT.txt
+          find app/build/outputs/apk -type f -name '*.apk' -exec sha256sum {} + > app/build/outputs/SHA256SUMS
       - name: Upload Android reports
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -233,6 +241,8 @@ jobs:
           name: operit-android-${{ github.run_number }}
           path: |
             app/build/outputs/apk/**/*.apk
+            app/build/outputs/SOURCE-COMMIT.txt
+            app/build/outputs/SHA256SUMS
             app/build/outputs/bundle/**/*.aab
           if-no-files-found: error
           retention-days: 14
