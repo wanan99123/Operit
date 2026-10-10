@@ -159,9 +159,14 @@ class MultiServiceManager(
     private suspend fun getOrCreateServiceForConfigLocked(configId: String, modelIndex: Int): ManagedService {
         val normalizedIndex = modelIndex.coerceAtLeast(0)
         val cacheKey = "$configId#$normalizedIndex"
-        customServiceInstances[cacheKey]?.let { return it }
-
         val config = modelConfigManager.getModelConfigFlow(configId).first()
+        customServiceInstances[cacheKey]?.let { cached ->
+            if (cached.modelConfig == config) return cached
+            // Retire stale entries without interrupting requests holding active leases.
+            customServiceInstances.remove(cacheKey)
+            retireManagedServiceLocked(cached)
+        }
+
         val service = createServiceFromConfig(config, normalizedIndex)
         val managedService = ManagedService(
             service = service,
@@ -235,11 +240,15 @@ class MultiServiceManager(
 
             if (functionType == FunctionType.CHAT) {
                 defaultService = null
+            }
+            if (functionType == FunctionType.CHAT ||
+                functionType == FunctionType.PLAN_GENERATION ||
+                functionType == FunctionType.PLAN_EXECUTION ||
+                functionType == FunctionType.SUBAGENT
+            ) {
                 val customServices = customServiceInstances.values.toList()
                 customServiceInstances.clear()
-                customServices.forEach { service ->
-                    retireManagedServiceLocked(service)
-                }
+                customServices.forEach { service -> retireManagedServiceLocked(service) }
             }
 
             AppLogger.d(TAG, "已移除功能${functionType}的服务实例缓存")

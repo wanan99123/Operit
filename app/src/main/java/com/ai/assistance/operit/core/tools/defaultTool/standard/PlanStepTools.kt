@@ -7,6 +7,7 @@ import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.PlanStepSummary
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.stats.PlanStepStore
+import com.ai.assistance.operit.data.stats.PlanModelStageStore
 import org.json.JSONObject
 
 /**
@@ -40,11 +41,19 @@ class UpdatePlanTool : ToolExecutor {
                 return failure(tool, error.message ?: "Invalid plan steps")
             }
 
+        // Validate the phase before changing either store; invalid requests have no side effects.
+        val stage = try {
+            PlanModelStageStore.resolve(tool.parameters.firstOrNull { it.name == "model_stage" }?.value, steps)
+        } catch (error: IllegalArgumentException) {
+            return failure(tool, error.message ?: "Invalid model stage")
+        }
+        PlanModelStageStore.update(chatKey, stage)
         val previous = PlanStepStore.update(chatKey, steps)
         val summary = PlanStepSummary.of(steps)
 
         val payload =
             JSONObject()
+                .put("model_stage", stage?.name?.lowercase() ?: "chat")
                 .put("old_todos", PlanStepRequest.toJson(previous))
                 .put("todos", PlanStepRequest.toJson(steps))
                 .put(
@@ -64,7 +73,8 @@ class UpdatePlanTool : ToolExecutor {
     override fun validateParameters(tool: AITool): com.ai.assistance.operit.data.model.ToolValidationResult {
         val rawTodos = tool.parameters.firstOrNull { it.name == "todos" }?.value.orEmpty()
         return try {
-            PlanStepRequest.parse(rawTodos)
+            val steps = PlanStepRequest.parse(rawTodos)
+            PlanModelStageStore.resolve(tool.parameters.firstOrNull { it.name == "model_stage" }?.value, steps)
             com.ai.assistance.operit.data.model.ToolValidationResult(valid = true)
         } catch (error: IllegalArgumentException) {
             com.ai.assistance.operit.data.model.ToolValidationResult(
@@ -95,7 +105,10 @@ class ReadPlanTool : ToolExecutor {
             )
         }
         val steps = PlanStepStore.read(chatKey)
-        val payload = JSONObject().put("todos", PlanStepRequest.toJson(steps)).toString()
+        val payload = JSONObject()
+            .put("todos", PlanStepRequest.toJson(steps))
+            .put("model_stage", PlanModelStageStore.read(chatKey)?.name?.lowercase() ?: "chat")
+            .toString()
         return ToolResult(tool.name, true, StringResultData(payload))
     }
 }

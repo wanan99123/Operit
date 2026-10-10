@@ -334,7 +334,6 @@ class MessageCoordinationDelegate(
         chatModelIndexOverride: Int? = null,
         turnOptions: ChatTurnOptions = ChatTurnOptions(),
         preferActiveRoleCard: Boolean = false,
-        planStage: com.ai.assistance.operit.data.model.PlanModelStage? = null,
     ) {
         // 仅在没有指定 chatId 的情况下，才需要确保有当前对话
         if (chatIdOverride.isNullOrBlank() && chatHistoryDelegate.currentChatId.value == null) {
@@ -374,7 +373,6 @@ class MessageCoordinationDelegate(
                     chatModelConfigIdOverride = chatModelConfigIdOverride,
                     chatModelIndexOverride = chatModelIndexOverride,
                     turnOptions = turnOptions,
-                    planStage = planStage,
                 )
             }
         } else {
@@ -389,7 +387,6 @@ class MessageCoordinationDelegate(
                 chatModelConfigIdOverride = chatModelConfigIdOverride,
                 chatModelIndexOverride = chatModelIndexOverride,
                 turnOptions = turnOptions,
-                planStage = planStage,
             )
         }
     }
@@ -539,7 +536,6 @@ class MessageCoordinationDelegate(
         isGroupOrchestrationTurn: Boolean = false,
         groupParticipantNamesText: String? = null,
         turnOptions: ChatTurnOptions = ChatTurnOptions(),
-        planStage: com.ai.assistance.operit.data.model.PlanModelStage? = null,
     ) {
         // 如果不是自动续写，更新当前的 promptFunctionType
         if (!isAutoContinuation) {
@@ -560,7 +556,7 @@ class MessageCoordinationDelegate(
             cancelPendingAutoContinuation(chatId, restoreIdleIfPendingState = false)
         }
         if (
-            planStage == null &&
+            com.ai.assistance.operit.data.stats.PlanModelStageStore.read(chatId) == null &&
             turnOptions.persistTurn &&
             enableGroupOrchestration &&
             shouldRunGroupOrchestration(
@@ -629,30 +625,29 @@ class MessageCoordinationDelegate(
         }
         val resolvedOverrides = try {
             if (promptFunctionType == PromptFunctionType.CHAT) {
-                val (resolvedChatModelConfigIdOverride, resolvedChatModelIndexOverride) =
-                    when {
-                        planStage != null -> {
-                            // Snapshot a stage-specific binding before resolving context limits.
-                            // Use CHAT with explicit overrides to keep the full tool-enabled pipeline.
-                            val mappings = runBlocking {
-                                com.ai.assistance.operit.data.preferences.FunctionalConfigManager(context)
-                                    .functionConfigMappingWithIndexFlow.first()
-                            }
-                            val mapping = com.ai.assistance.operit.data.preferences.PlanModelRouting.resolve(
-                                planStage, mappings,
-                            )
-                            Pair(mapping.configId, mapping.modelIndex)
-                        }
-                        !chatModelConfigIdOverride.isNullOrBlank() -> {
-                            Pair(chatModelConfigIdOverride, (chatModelIndexOverride ?: 0).coerceAtLeast(0))
-                        }
-                        isAutoContinuation -> {
-                            Pair(currentChatModelConfigIdOverride, currentChatModelIndexOverride)
-                        }
-                        else -> {
-                            resolveRoleCardChatModelOverrides(roleCardId)
-                        }
+                val mappings = runBlocking {
+                    FunctionalConfigManager(context).functionConfigMappingWithIndexFlow.first()
+                }
+                val ordinaryTarget = when {
+                    !chatModelConfigIdOverride.isNullOrBlank() -> FunctionConfigMapping(chatModelConfigIdOverride, (chatModelIndexOverride ?: 0).coerceAtLeast(0))
+                    isAutoContinuation && !currentChatModelConfigIdOverride.isNullOrBlank() -> FunctionConfigMapping(currentChatModelConfigIdOverride!!, (currentChatModelIndexOverride ?: 0).coerceAtLeast(0))
+                    else -> {
+                        val (id, index) = resolveRoleCardChatModelOverrides(roleCardId)
+                        if (id.isNullOrBlank()) mappings[FunctionType.CHAT] ?: FunctionConfigMapping()
+                        else FunctionConfigMapping(id, (index ?: 0).coerceAtLeast(0))
                     }
+                }
+                // Initial user request uses the configured default. Later stage requests ignore
+                // composer/role-card model bindings; ordinary conversation keeps those bindings.
+                val firstRequest = !isAutoContinuation && chatModelConfigIdOverride.isNullOrBlank() &&
+                    runBlocking { chatHistoryDelegate.getRuntimeChatHistory(chatId) }.none { it.sender == "user" }
+                val stage = com.ai.assistance.operit.data.stats.PlanModelStageStore.read(chatId)
+                // Keep the ordinary target available when the agent returns to chat. The model
+                // loop applies the live phase binding independently before every provider request.
+                val target = if (firstRequest && stage == null) FunctionConfigMapping() else ordinaryTarget
+                val resolvedChatModelConfigIdOverride = target.configId
+                val resolvedChatModelIndexOverride = target.modelIndex
+                AppLogger.d(TAG, "Request model route: chatId=$chatId, firstRequest=$firstRequest, stage=$stage, configId=${target.configId}, modelIndex=${target.modelIndex}")
                 val resolvedMemorySpaceIdOverride =
                     when {
                         !memorySpaceIdOverride.isNullOrBlank() -> memorySpaceIdOverride
@@ -679,7 +674,14 @@ class MessageCoordinationDelegate(
         val resolvedMemorySpaceIdOverride = resolvedOverrides.third
         val chatContextSettings =
             runBlocking {
-                resolveChatContextSettingsForRequest(resolvedChatModelConfigIdOverride)
+                // Pre-send summary checks must use the active phase model too; keeping the
+                // ordinary override here would summarize against the wrong context window.
+                val phase = com.ai.assistance.operit.data.stats.PlanModelStageStore.read(chatId)
+                val contextConfigId = if (promptFunctionType == PromptFunctionType.CHAT && phase != null) {
+                    val mappings = FunctionalConfigManager(context).functionConfigMappingWithIndexFlow.first()
+                    com.ai.assistance.operit.data.preferences.PlanModelRouting.resolve(phase, mappings).configId
+                } else resolvedChatModelConfigIdOverride
+                resolveChatContextSettingsForRequest(contextConfigId)
             }
 
         if (!isAutoContinuation) {

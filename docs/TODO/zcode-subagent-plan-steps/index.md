@@ -37,3 +37,7 @@ The checklist menu also offers Review, which uses the exact same model configura
 Release unit tests and :app:packageRelease run in GitHub Actions. No local Gradle or APK download is required. The application ID remains com.ai.assistance.operit. Without the matching release key, the APK is unsigned and cannot be installed or used for an in-place upgrade.
 
 Implementation is complete. Release unit tests passed in cloud run 37972771750; packaging was blocked by an obsolete Japanese translation. See [Release lint validation](02-release-lint-validation.md) for the fix and verification record. Packaging after the fix and runtime UI/cancellation checks remain pending.
+
+## Automatic phase routing iteration
+
+The development branch now uses [automatic phase model routing](08-automatic-phase-model-routing.md), which supersedes the stage menu actions in 06 and 07. The interface retains only checklist and subagent progress. Cloud and device validation are recorded separately.

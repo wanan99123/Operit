@@ -21,6 +21,7 @@ object PlanStepStore {
     fun read(key: String): List<PlanStep> = state.value[key].orEmpty().toList()
 
     fun clear(key: String) {
+        PlanModelStageStore.clear(key)
         update(key, emptyList())
     }
 }

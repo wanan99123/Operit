@@ -1474,62 +1474,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         hideMentionSuggestionPanel()
     }
 
-    /** Explicit plan actions keep planning, implementation and delegated models independent. */
-    fun sendPlanStage(stage: com.ai.assistance.operit.data.model.PlanModelStage) {
-        val chatId = currentChatId.value
-        if (chatId == null) {
-            showToast(context.getString(R.string.plan_stage_no_session))
-            return
-        }
-        if (chatId in activeStreamingChatIds.value) {
-            showToast(context.getString(R.string.plan_stage_busy))
-            return
-        }
-        val message = when (stage) {
-            com.ai.assistance.operit.data.model.PlanModelStage.GENERATION -> {
-                val draft = userMessage.value.text.trim()
-                val request = if (draft.isNotBlank()) draft else
-                    chatHistory.value.lastOrNull { it.sender == "user" }?.content.orEmpty().trim()
-                if (request.isBlank()) {
-                    showToast(context.getString(R.string.plan_stage_no_request))
-                    return
-                }
-                context.getString(R.string.plan_generation_request, request)
-            }
-            com.ai.assistance.operit.data.model.PlanModelStage.IMPLEMENTATION -> {
-                val steps = com.ai.assistance.operit.data.stats.PlanStepStore.read(chatId)
-                if (steps.isEmpty() || steps.all { it.status == com.ai.assistance.operit.data.model.PlanStepStatus.COMPLETED }) {
-                    showToast(context.getString(R.string.plan_stage_empty))
-                    return
-                }
-                context.getString(
-                    R.string.plan_implementation_request,
-                    com.ai.assistance.operit.core.tools.defaultTool.standard.PlanStepRequest.toJson(steps).toString(),
-                )
-            }
-            com.ai.assistance.operit.data.model.PlanModelStage.REVIEW -> {
-                val steps = com.ai.assistance.operit.data.stats.PlanStepStore.read(chatId)
-                if (steps.isEmpty()) {
-                    showToast(context.getString(R.string.plan_review_empty))
-                    return
-                }
-                // Completed plans remain reviewable; do not reuse implementation eligibility.
-                context.getString(
-                    R.string.plan_review_request,
-                    com.ai.assistance.operit.core.tools.defaultTool.standard.PlanStepRequest.toJson(steps).toString(),
-                )
-            }
-        }
-        hideMentionSuggestionPanel()
-        messageCoordinationDelegate.sendUserMessage(
-            promptFunctionType = PromptFunctionType.CHAT,
-            preferActiveRoleCard = true,
-            chatIdOverride = chatId,
-            messageTextOverride = message,
-            planStage = stage,
-        )
-    }
-
+    /** Phase switching is automatic inside the model/tool loop, not a composer action. */
     fun sendUserMessage(promptFunctionType: PromptFunctionType = PromptFunctionType.CHAT) {
         hideMentionSuggestionPanel()
         messageCoordinationDelegate.sendUserMessage(

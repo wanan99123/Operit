@@ -455,12 +455,25 @@ class EnhancedAIService private constructor(
         val conversationHistory: MutableList<PromptTurn>,
         val eventChannel: MutableSharedStream<TextStreamEvent>,
         var modelExecutionSnapshot: ModelExecutionSnapshot? = null,
+        val routingChatId: String? = null,
+        val automaticPlanRouting: Boolean = false,
+        val delegatedModelRouting: Boolean = false,
+        var modelRoutingTarget: com.ai.assistance.operit.data.preferences.FunctionConfigMapping? = null,
+        var modelPromptNeedsRefresh: Boolean = false,
+        val routingSystemPromptTemplate: String? = null,
+        val routingGroupParticipantNamesText: String? = null,
+        val routingProxySenderName: String? = null,
         val toolCallBudget: ToolCallBudget = ToolCallBudget(null),
         val onChildToolEvent: (suspend (ToolInvocation, String, ToolResult?) -> Unit)? = null,
         val workspacePath: String? = null,
         val workspaceEnv: String? = null,
     )
 
+    private val lastRoutedTargets = ConcurrentHashMap<String, com.ai.assistance.operit.data.preferences.FunctionConfigMapping>()
+    suspend fun getLastRoutedDisplayProviderAndModel(chatId: String): Pair<String, String>? {
+        val target = lastRoutedTargets[chatId] ?: return null
+        return getDisplayProviderAndModelForFunction(FunctionType.CHAT, target.configId, target.modelIndex)
+    }
     private val activeExecutionContexts = ConcurrentHashMap<Int, MessageExecutionContext>()
     private val nextExecutionContextId = AtomicInteger(0)
 
@@ -495,19 +508,39 @@ class EnhancedAIService private constructor(
         chatModelConfigIdOverride: String?,
         chatModelIndexOverride: Int?
     ): ModelExecutionSnapshot {
-        context.modelExecutionSnapshot?.let { return it }
         ensureInitialized()
-        val overrideConfigId = chatModelConfigIdOverride?.takeIf { it.isNotBlank() }
-        val lease =
-            if (functionType == FunctionType.CHAT && overrideConfigId != null) {
-                multiServiceManager.acquireServiceForConfig(
-                    configId = overrideConfigId,
-                    modelIndex = (chatModelIndexOverride ?: 0).coerceAtLeast(0)
-                )
-            } else {
-                multiServiceManager.acquireServiceForFunction(functionType)
+        val mappings = com.ai.assistance.operit.data.preferences.FunctionalConfigManager(this.context)
+            .functionConfigMappingWithIndexFlow.first()
+        val ordinaryTarget = if (context.delegatedModelRouting) {
+            mappings[FunctionType.SUBAGENT] ?: com.ai.assistance.operit.data.preferences.FunctionConfigMapping()
+        } else chatModelConfigIdOverride?.takeIf { functionType == FunctionType.CHAT && it.isNotBlank() }?.let {
+            com.ai.assistance.operit.data.preferences.FunctionConfigMapping(it, (chatModelIndexOverride ?: 0).coerceAtLeast(0))
+        } ?: (mappings[functionType] ?: com.ai.assistance.operit.data.preferences.FunctionConfigMapping())
+        val stage = if (context.automaticPlanRouting) context.routingChatId?.let {
+            com.ai.assistance.operit.data.stats.PlanModelStageStore.read(it)
+        } else null
+        val target = com.ai.assistance.operit.data.preferences.AutomaticPlanModelRouting.resolve(
+            stage, mappings, ordinaryTarget, !context.automaticPlanRouting
+        )
+        // Acquire at every boundary: an unchanged mapping may still have edited configuration or
+        // model parameters. The manager retires stale entries without cancelling other leases.
+        val lease = multiServiceManager.acquireServiceForConfig(target.configId, target.modelIndex)
+        context.modelExecutionSnapshot?.let { cached ->
+            if (context.modelRoutingTarget == target && cached.config == lease.modelConfig &&
+                cached.lease.modelIndex == lease.modelIndex && cached.modelParameters == lease.modelParameters
+            ) {
+                lease.close()
+                return cached
             }
+            // Tools have completed before this hop: close only this execution's old lease.
+            releaseModelExecutionSnapshot(context)
+            context.modelPromptNeedsRefresh = true
+        }
+        context.modelRoutingTarget = target
+        if (context.automaticPlanRouting) context.routingChatId?.let { lastRoutedTargets[it] = target }
+        AppLogger.d(TAG, "Automatic model route: chatId=${context.routingChatId}, stage=$stage, configId=${target.configId}, modelIndex=${target.modelIndex}")
         val snapshot = ModelExecutionSnapshot(lease)
+        AppLogger.d(TAG, "Model execution snapshot: configId=${lease.modelConfig.id}, index=${lease.modelIndex}, providerModel=${lease.service.providerModel}")
         context.modelExecutionSnapshot = snapshot
         return snapshot
     }
@@ -1017,11 +1050,18 @@ class EnhancedAIService private constructor(
                     executionId = nextExecutionContextId.incrementAndGet(),
                     conversationHistory = chatHistory.toMutableList(),
                     eventChannel = eventChannel,
+                    routingChatId = chatId,
+                    routingSystemPromptTemplate = customSystemPromptTemplate,
+                    routingGroupParticipantNamesText = groupParticipantNamesText,
+                    routingProxySenderName = proxySenderName,
+                    automaticPlanRouting = !isSubTask && functionType == FunctionType.CHAT,
+                    delegatedModelRouting = isSubTask,
                     toolCallBudget = ToolCallBudget(options.maxToolCalls),
                     onChildToolEvent = options.onChildToolEvent,
                     workspacePath = options.workspacePath,
                     workspaceEnv = options.workspaceEnv,
                 )
+            if (execContext.automaticPlanRouting) chatId?.let { lastRoutedTargets.remove(it) }
             registerExecutionContext(execContext)
             var hadFatalError = false
             var providerStreamCollectionStarted = false
@@ -2361,6 +2401,28 @@ class EnhancedAIService private constructor(
             chatModelConfigIdOverride,
             chatModelIndexOverride
         )
+        if (context.modelPromptNeedsRefresh) {
+            val refreshed = prepareConversationHistory(
+                chatHistory = context.conversationHistory.filter { it.kind != PromptTurnKind.SYSTEM },
+                processedInput = "",
+                chatId = chatId,
+                workspacePath = context.workspacePath,
+                workspaceEnv = context.workspaceEnv,
+                promptFunctionType = promptFunctionType,
+                customSystemPromptTemplate = context.routingSystemPromptTemplate,
+                roleCardId = roleCardId,
+                enableGroupOrchestrationHint = enableGroupOrchestrationHint,
+                groupParticipantNamesText = context.routingGroupParticipantNamesText,
+                proxySenderName = context.routingProxySenderName,
+                isSubTask = isSubTask,
+                functionType = functionType,
+                modelConfig = modelSnapshot.config,
+                memorySpaceIdOverride = memorySpaceIdOverride,
+            )
+            context.conversationHistory.clear()
+            context.conversationHistory.addAll(refreshed)
+            context.modelPromptNeedsRefresh = false
+        }
         val modelParameters = modelSnapshot.modelParameters
 
         // 获取对应功能类型的AIService实例
@@ -2382,18 +2444,20 @@ class EnhancedAIService private constructor(
             publishEstimate = true
         )
 
-        // After a tool call, check if token usage exceeds the threshold
-        if (maxTokens > 0) {
-            val usageRatio = currentTokens.toDouble() / maxTokens.toDouble()
-
-            if (usageRatio >= tokenUsageThreshold) {
-                AppLogger.w(TAG, "Token usage ($usageRatio) exceeds threshold ($tokenUsageThreshold) after tool call. Triggering summary.")
+        // Context limits follow the actual phase model, not the initial request's model.
+        val phaseActive = context.automaticPlanRouting && context.routingChatId?.let {
+            com.ai.assistance.operit.data.stats.PlanModelStageStore.read(it)
+        } != null
+        val requestMaxTokens = if (phaseActive) (modelSnapshot.config.contextLength * 1024)
+            .toLong().coerceIn(0L, Int.MAX_VALUE.toLong()).toInt() else maxTokens
+        val requestTokenThreshold = if (phaseActive) modelSnapshot.config.summaryTokenThreshold.toDouble() else tokenUsageThreshold
+        if (requestMaxTokens > 0) {
+            val usageRatio = currentTokens.toDouble() / requestMaxTokens.toDouble()
+            if (usageRatio >= requestTokenThreshold) {
+                AppLogger.w(TAG, "Token usage ($usageRatio) exceeds phase threshold ($requestTokenThreshold). Triggering summary.")
                 onTokenLimitExceeded?.invoke()
                 context.isConversationActive.set(false)
-                if (!isSubTask) {
-                    stopAiService(characterName, avatarUri)
-                }
-                // 关键修复：在触发总结后，直接返回，因为后续流程将由回调处理
+                if (!isSubTask) stopAiService(characterName, avatarUri)
                 return
             }
         }

@@ -8543,24 +8543,4 @@
     <string name="function_desc_plan_execution">Used by Implement Plan to execute the current checklist. Its model binding is independent of generation and subagents. If unset, use the first model in the default configuration.</string>
     <string name="plan_models_use_default">Use Default Model</string>
     <string name="plan_models_default_notice">Plan generation, implementation and subagents have separate model selections. Unset selections and Use Default Model select the first model in the default configuration.</string>
-    <string name="plan_action_generate">Generate Plan</string>
-    <string name="plan_action_implement">Implement Plan</string>
-    <string name="plan_stage_no_request">Enter a task in the composer or send a task in the current conversation first.</string>
-    <string name="plan_stage_busy">This conversation is busy. Wait for completion or stop it first.</string>
-    <string name="plan_stage_empty">Generate a plan before implementing it.</string>
-    <string name="plan_stage_no_session">Open a conversation first.</string>
-    <string name="plan_generation_request">Generate a clear, verifiable implementation plan for the request below, using the current conversation and workspace. Perform only read-only investigation if needed. Write the complete checklist with update_plan, with all steps initially pending, then explain the plan. Do not implement changes or launch subagents in this stage.
-
-Request:
-%1$s</string>
-    <string name="plan_implementation_request">Implement the current plan below using the current conversation and workspace. Update the complete checklist with update_plan when steps start and finish. Submit independent tasks without conflicting writes together in ONE run_subagents call; do not await run_subagent calls one by one. Respect dependencies for other steps. Subagents use their own model setting. Respect current permissions, verify results, and do not claim unperformed operations succeeded.
-
-Current plan:
-%1$s</string>
-    <string name="plan_action_review">Review</string>
-    <string name="plan_review_empty">Generate a plan before reviewing it.</string>
-    <string name="plan_review_request">Review the current plan and its implementation results below. Perform read-only inspection of conversation history, workspace files, existing changes and verification records. The plan-generation model performs this review. Check requirement coverage, whether claimed steps really completed, implementation defects, regressions and missing verification. Read available evidence before concluding; label unverified claims. Do not modify files, continue implementation, launch subagents or change checklist statuses. Report findings by severity with evidence and locations, fixes and regression checks. If no issues are found, state the reviewed scope and unverified areas.
-
-Current plan:
-%1$s</string>
 </resources>

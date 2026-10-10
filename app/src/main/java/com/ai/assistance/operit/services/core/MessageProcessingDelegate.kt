@@ -1469,6 +1469,13 @@ class MessageProcessingDelegate(
                             waitDurationMs = waitDurationMs
                         )
                 }
+                // A single streamed turn can span multiple phase models. Label the saved reply
+                // with the actual final provider, not the original composer snapshot.
+                if (chatId != null) {
+                    service.getLastRoutedDisplayProviderAndModel(chatId)?.let { (actualProvider, actualModel) ->
+                        aiMessage = aiMessage.copy(provider = actualProvider, modelName = actualModel)
+                    }
+                }
                 aiMessage = aiMessage.copy(completedAt = System.currentTimeMillis())
 
                 if (isWaifuModeEnabled) {

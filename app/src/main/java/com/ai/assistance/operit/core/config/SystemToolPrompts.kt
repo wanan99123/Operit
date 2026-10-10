@@ -63,9 +63,10 @@ object SystemToolPrompts {
             ),
             ToolPrompt(
                 name = "update_plan",
-                description = "Create or update the working plan for this session. The plan is rendered to the user as live progress. Send the complete list each call; it replaces the previous plan. Keep exactly one step in_progress at a time and mark it completed when done. Use it for multi-step work, not for single-step tasks.",
+                description = "Create or update the working plan for this session. The plan is rendered to the user as live progress. Send the complete list each call; it replaces the previous plan. Keep exactly one step in_progress at a time and mark it completed when done. Use it for multi-step work, not for single-step tasks. Automatic model routing: before planning use model_stage=generation (todos=[] is allowed as a phase-only bootstrap); then the planning model writes pending steps; before implementation use implementation; before review use review; for ordinary chat use chat. Set the phase BEFORE doing that work in a standalone update_plan call; do not batch stage changes with implementation/subagent tools. The next model request switches automatically. No user buttons are required.",
                 parametersStructured = listOf(
                     ToolParameterSchema(name = "todos", type = "string", description = "JSON array of {content, status, priority}. status: pending|in_progress|completed. priority: high|medium|low.", required = true),
+                    ToolParameterSchema(name = "model_stage", type = "string", description = "generation | implementation | review | chat. Optional; omitted: pending=generation, in_progress=implementation, all completed=review, empty=chat.", required = false),
                 )
             ),
             ToolPrompt(
@@ -119,9 +120,10 @@ object SystemToolPrompts {
             ),
             ToolPrompt(
                 name = "update_plan",
-                description = "创建或更新本会话的工作计划。计划会作为实时进度展示给用户。每次必须发送完整列表，它会整体替换上一版。同一时间只保留一个 in_progress 步骤，完成后标记为 completed。适用于多步骤任务，单步任务不需要。",
+                description = "创建或更新本会话的工作计划。计划会作为实时进度展示给用户。每次必须发送完整列表，它会整体替换上一版。同一时间只保留一个 in_progress 步骤，完成后标记为 completed。适用于多步骤任务，单步任务不需要。模型自动路由：开始写计划前设 model_stage=generation（可先用 todos=[] 仅切换阶段），下一轮由计划模型生成全 pending 清单；实施前设 implementation；审查前设 review；返回普通聊天设 chat。必须先单独调用 update_plan 更新阶段，不与实施或子智能体工具混在同批，再进行相应工作；下一次模型请求自动使用对应设置，无需用户按键。",
                 parametersStructured = listOf(
                     ToolParameterSchema(name = "todos", type = "string", description = "JSON 数组，元素为 {content, status, priority}。status：pending|in_progress|completed；priority：high|medium|low。", required = true),
+                    ToolParameterSchema(name = "model_stage", type = "string", description = "generation | implementation | review | chat. Optional; omitted: pending=generation, in_progress=implementation, all completed=review, empty=chat.", required = false),
                 )
             ),
             ToolPrompt(

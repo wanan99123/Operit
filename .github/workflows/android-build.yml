@@ -211,6 +211,7 @@ jobs:
             --tests 'com.ai.assistance.operit.data.preferences.FunctionalConfigSubagentMappingTest' \
             --tests 'com.ai.assistance.operit.data.preferences.FunctionalConfigPlanMappingTest' \
             --tests 'com.ai.assistance.operit.data.preferences.PlanModelRoutingTest' \
+            --tests 'com.ai.assistance.operit.data.preferences.AutomaticPlanModelRoutingTest' \
             --tests 'com.ai.assistance.operit.api.chat.enhance.ToolCallBudgetTest' \
             --tests 'com.ai.assistance.operit.api.chat.enhance.OrderedToolResultsTest' \
             --tests 'com.ai.assistance.operit.api.chat.enhance.ModelRequestConcurrencyPolicyTest' \
