@@ -31,6 +31,26 @@ class PlanModelRoutingTest {
     }
 
     @Test
+    fun reviewSharesTheExactPlannerMappingAndReflectsPlannerChanges() {
+        val mappings = mutableMapOf(
+            FunctionType.PLAN_GENERATION to FunctionConfigMapping("planner", 2),
+            FunctionType.PLAN_EXECUTION to FunctionConfigMapping("implementer", 3),
+            FunctionType.SUBAGENT to FunctionConfigMapping("child", 4),
+        )
+        assertEquals(FunctionType.PLAN_GENERATION, PlanModelStage.REVIEW.functionType)
+        assertEquals(
+            PlanModelRouting.resolve(PlanModelStage.GENERATION, mappings),
+            PlanModelRouting.resolve(PlanModelStage.REVIEW, mappings),
+        )
+        mappings[FunctionType.PLAN_GENERATION] = FunctionConfigMapping("new-planner", 5)
+        assertEquals(FunctionConfigMapping("new-planner", 5), PlanModelRouting.resolve(PlanModelStage.REVIEW, mappings))
+        assertEquals(FunctionConfigMapping("implementer", 3), PlanModelRouting.resolve(PlanModelStage.IMPLEMENTATION, mappings))
+        mappings.remove(FunctionType.PLAN_GENERATION)
+        assertEquals(FunctionConfigMapping(), PlanModelRouting.resolve(PlanModelStage.REVIEW, mappings))
+        assertEquals(FunctionConfigMapping(), PlanModelRouting.resolve(PlanModelStage.GENERATION, mappings))
+    }
+
+    @Test
     fun explicitlySelectedDefaultConfigKeepsItsChosenModelIndex() {
         val mappings = mapOf(FunctionType.PLAN_EXECUTION to FunctionConfigMapping("default", 2))
         assertEquals(FunctionConfigMapping("default", 2), PlanModelRouting.resolve(PlanModelStage.IMPLEMENTATION, mappings))

@@ -3,7 +3,7 @@ package com.ai.assistance.operit.data.preferences
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.PlanModelStage
 
-/** Each stage has its own binding. Unset stages use the existing default config, never a sibling. */
+/** Generation and review share the planner binding. Unset bindings use the existing default config. */
 internal object PlanModelRouting {
     fun resolve(
         stage: PlanModelStage,

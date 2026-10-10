@@ -1507,6 +1507,18 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     com.ai.assistance.operit.core.tools.defaultTool.standard.PlanStepRequest.toJson(steps).toString(),
                 )
             }
+            com.ai.assistance.operit.data.model.PlanModelStage.REVIEW -> {
+                val steps = com.ai.assistance.operit.data.stats.PlanStepStore.read(chatId)
+                if (steps.isEmpty()) {
+                    showToast(context.getString(R.string.plan_review_empty))
+                    return
+                }
+                // Completed plans remain reviewable; do not reuse implementation eligibility.
+                context.getString(
+                    R.string.plan_review_request,
+                    com.ai.assistance.operit.core.tools.defaultTool.standard.PlanStepRequest.toJson(steps).toString(),
+                )
+            }
         }
         hideMentionSuggestionPanel()
         messageCoordinationDelegate.sendUserMessage(

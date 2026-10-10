@@ -8525,7 +8525,7 @@
     <string name="plan_agent_tool_progress">工具调用 %1$d / %2$d</string>
     <string name="function_type_plan_generation">计划生成</string>
     <string name="function_type_plan_execution">实施计划</string>
-    <string name="function_desc_plan_generation">用于计划面板的“生成计划”操作，与实施计划和子智能体独立选择配置及模型；未设置时使用默认配置中的第一个模型。</string>
+    <string name="function_desc_plan_generation">用于计划面板的“生成计划”和“审查”操作，两者共用此配置及模型；与实施计划和子智能体独立选择，未设置时使用默认配置中的第一个模型。</string>
     <string name="function_desc_plan_execution">用于计划面板的“实施计划”操作，根据已有清单执行任务；不与计划生成或子智能体共用模型绑定，未设置时使用默认配置中的第一个模型。</string>
     <string name="plan_models_use_default">使用默认模型</string>
     <string name="plan_models_default_notice">计划生成、实施计划和子智能体分别选择模型；未单独配置或选择“使用默认模型”时，使用默认配置中的第一个模型。</string>
@@ -8540,6 +8540,12 @@
 请求：
 %1$s</string>
     <string name="plan_implementation_request">实施下面的当前计划，结合当前对话和工作区继续工作。使用 update_plan 更新完整清单，在开始及完成步骤时更新状态。互不依赖且不会冲突写入的任务使用一次 run_subagents 批量并行提交；不要逐个等待 run_subagent。存在依赖的步骤按依赖执行。子智能体使用自己的模型设置。遵守当前权限，验证结果，不要声称未执行的操作已完成。
+
+当前计划：
+%1$s</string>
+    <string name="plan_action_review">审查</string>
+    <string name="plan_review_empty">请先生成计划再审查。</string>
+    <string name="plan_review_request">审查下面的当前计划及其实施结果，结合当前对话、工作区文件、已有改动和验证记录进行只读核查。审查由计划生成模型执行。检查需求覆盖、步骤完成真实性、实现缺陷、回归风险及缺失验证；能读取证据时先读取再判断，不要把待验证内容说成已验证。不要自动修改文件、不要继续实施、不要启动子智能体、不要修改待办状态。按严重程度报告问题、证据和位置，并给出修复建议及回归验证方法；若未发现问题，说明审查范围和未验证项。
 
 当前计划：
 %1$s</string>

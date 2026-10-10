@@ -55,8 +55,10 @@ fun PlanStepsButton(
     subagents: List<SubagentProgress> = emptyList(),
     canGeneratePlan: Boolean,
     canImplementPlan: Boolean,
+    canReviewPlan: Boolean,
     onGeneratePlan: () -> Unit,
     onImplementPlan: () -> Unit,
+    onReviewPlan: () -> Unit,
 ) {
     var expanded by remember(sessionId) { mutableStateOf(false) }
     val completedCount = steps.count { it.status == PlanStepStatus.COMPLETED }
@@ -124,6 +126,14 @@ fun PlanStepsButton(
                 onClick = {
                     expanded = false
                     onImplementPlan()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.plan_action_review)) },
+                enabled = canReviewPlan,
+                onClick = {
+                    expanded = false
+                    onReviewPlan()
                 },
             )
             HorizontalDivider()

@@ -28,6 +28,10 @@ Multiple independent tasks now use one `run_subagents` call. All child flows sta
 
 The functional model settings now expose separate Plan Generation, Plan Implementation and Subagent selections. The checklist menu offers explicit Generate Plan and Implement Plan actions that route actual requests through the chosen stage model. Unset stages use the default configuration at model index 0. See [Independent planning and implementation models](06-independent-plan-models.md) for routing and verification.
 
+## Review
+
+The checklist menu also offers Review, which uses the exact same model configuration and index as Plan Generation. No separate reviewer model is introduced. It reviews nonempty plans, including completed plans, against conversation and workspace evidence without requesting automatic edits. See [Review using the planner model](07-review-with-planner-model.md).
+
 ## Verification
 
 Release unit tests and :app:packageRelease run in GitHub Actions. No local Gradle or APK download is required. The application ID remains com.ai.assistance.operit. Without the matching release key, the APK is unsigned and cannot be installed or used for an in-place upgrade.

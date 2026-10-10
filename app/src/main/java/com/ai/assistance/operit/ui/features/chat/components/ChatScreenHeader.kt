@@ -182,11 +182,15 @@ fun ChatScreenHeader(
                 subagents = subagents,
                 canGeneratePlan = !planBusy && (planDraft.text.isNotBlank() || planHistory.any { it.sender == "user" }),
                 canImplementPlan = !planBusy && planSteps.any { it.status != com.ai.assistance.operit.data.model.PlanStepStatus.COMPLETED },
+                canReviewPlan = !planBusy && planSteps.isNotEmpty(),
                 onGeneratePlan = {
                     actualViewModel.sendPlanStage(com.ai.assistance.operit.data.model.PlanModelStage.GENERATION)
                 },
                 onImplementPlan = {
                     actualViewModel.sendPlanStage(com.ai.assistance.operit.data.model.PlanModelStage.IMPLEMENTATION)
+                },
+                onReviewPlan = {
+                    actualViewModel.sendPlanStage(com.ai.assistance.operit.data.model.PlanModelStage.REVIEW)
                 },
             )
 
