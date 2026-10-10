@@ -55,7 +55,7 @@ fun PlanStepsButton(
 ) {
     var expanded by remember(sessionId) { mutableStateOf(false) }
     val completedCount = steps.count { it.status == PlanStepStatus.COMPLETED }
-    val runningAgents = subagents.count { it.status == "running" }
+    val runningAgents = subagents.count { it.status == "running" || it.status == "retrying" }
     val activeStep =
         steps.firstOrNull { it.status == PlanStepStatus.IN_PROGRESS }
             ?: steps.firstOrNull { it.status != PlanStepStatus.COMPLETED }
@@ -167,6 +167,7 @@ private fun SubagentProgressRow(agent: SubagentProgress) {
     val statusText = stringResource(
         when (agent.status) {
             "running" -> R.string.plan_agent_running
+            "retrying" -> R.string.plan_agent_retrying
             "completed" -> R.string.plan_agent_completed
             "failed" -> R.string.plan_agent_failed
             "timed_out" -> R.string.plan_agent_timed_out
@@ -175,7 +176,7 @@ private fun SubagentProgressRow(agent: SubagentProgress) {
         }
     )
     val statusColor = when (agent.status) {
-        "running" -> MaterialTheme.colorScheme.primary
+        "running", "retrying" -> MaterialTheme.colorScheme.primary
         "completed" -> MaterialTheme.colorScheme.tertiary
         "failed", "timed_out" -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -187,7 +188,8 @@ private fun SubagentProgressRow(agent: SubagentProgress) {
             color = MaterialTheme.colorScheme.onSurface
         )
         Text(
-            text = "${agent.agentType} · $statusText",
+            text = "${agent.agentType} · $statusText" + if (agent.attempt > 1L || agent.status == "retrying")
+                " · " + stringResource(R.string.plan_agent_attempt, agent.attempt) else "",
             style = MaterialTheme.typography.labelSmall,
             color = statusColor
         )
@@ -198,6 +200,10 @@ private fun SubagentProgressRow(agent: SubagentProgress) {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        if (agent.status == "retrying") agent.lastError?.let { reason ->
+            Text(text = reason, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error, maxLines = 2)
+        }
         agent.tools.takeLast(3).forEach { tool ->
             Text(
                 text = tool.name,

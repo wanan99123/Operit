@@ -110,6 +110,30 @@ class SubagentProgressStoreTest {
     }
 
     @Test
+    fun retryUpdatesOneCardAndCannotRestoreSupersededCards() {
+        val chatId = UUID.randomUUID().toString()
+        try {
+            val round = SubagentProgressStore.beginRound(chatId)
+            SubagentProgressStore.start(chatId, SubagentProgress("agent", "Explore", "Task"), round)
+            SubagentProgressStore.tool(chatId, "agent", SubagentToolProgress("tool", "read_file", "started"))
+            SubagentProgressStore.retry(chatId, "agent", 1L, "connection failed")
+            val retry = SubagentProgressStore.sessions.value.getValue(chatId).single()
+            assertEquals("retrying", retry.status)
+            assertEquals("connection failed", retry.lastError)
+            assertTrue(retry.tools.single().isTerminal)
+            SubagentProgressStore.beginAttempt(chatId, "agent", 2L)
+            val next = SubagentProgressStore.sessions.value.getValue(chatId).single()
+            assertEquals("running", next.status)
+            assertEquals(2L, next.attempt)
+            assertTrue(next.tools.isEmpty())
+            SubagentProgressStore.beginRound(chatId)
+            SubagentProgressStore.retry(chatId, "agent", 2L, "late failure")
+            SubagentProgressStore.beginAttempt(chatId, "agent", 3L)
+            assertTrue(SubagentProgressStore.sessions.value.getValue(chatId).isEmpty())
+        } finally { SubagentProgressStore.clear(chatId) }
+    }
+
+    @Test
     fun boundsToolHistory() {
         val chatId = UUID.randomUUID().toString()
         try {

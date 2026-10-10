@@ -14,6 +14,8 @@ data class SubagentProgress(
     val description: String,
     val status: String = "running",
     val tools: List<SubagentToolProgress> = emptyList(),
+    val attempt: Long = 1L,
+    val lastError: String? = null,
 )
 
 /** Parent-session projection only. Never stores child reasoning or raw tool output. */
@@ -39,6 +41,25 @@ object SubagentProgressStore {
         if (roundId != null && rounds[chatId] != roundId) return
         val old = state.value[chatId].orEmpty()
         state.value = state.value + (chatId to (old + agent))
+    }
+
+    @Synchronized
+    fun beginAttempt(chatId: String, agentId: String, attempt: Long) {
+        val agents = state.value[chatId] ?: return
+        state.value = state.value + (chatId to agents.map {
+            if (it.agentId == agentId) it.copy(status = "running", attempt = attempt, tools = emptyList()) else it
+        })
+    }
+
+    @Synchronized
+    fun retry(chatId: String, agentId: String, attempt: Long, reason: String) {
+        val agents = state.value[chatId] ?: return
+        state.value = state.value + (chatId to agents.map {
+            if (it.agentId == agentId) it.copy(
+                status = "retrying", attempt = attempt, lastError = reason.take(2000),
+                tools = it.tools.map { tool -> if (!tool.isTerminal) tool.copy(status = "error") else tool }
+            ) else it
+        })
     }
 
     @Synchronized

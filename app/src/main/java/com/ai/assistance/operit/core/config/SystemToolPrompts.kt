@@ -44,19 +44,19 @@ object SystemToolPrompts {
         tools = listOf(
             ToolPrompt(
                 name = "run_subagent",
-                description = "Launch one synchronous profile-backed subagent and return a structured result. For multiple independent tasks, use ONE run_subagents call with all tasks instead of awaiting run_subagent calls one by one. The child uses the Subagent functional model configuration and inherits the parent role, permissions and workspace; it starts with a fresh context. Background execution is not supported.",
+                description = "Launch one synchronous profile-backed subagent and return a structured result. For multiple independent tasks, use ONE run_subagents call with all tasks instead of awaiting run_subagent calls one by one. The child uses the Subagent functional model configuration and inherits the parent role, permissions and workspace; it starts with a fresh context. Background execution is not supported. Execution failures and per-attempt timeouts automatically retry until success or parent cancellation; no total retry limit.",
                 parametersStructured = listOf(
                     ToolParameterSchema(name = "description", type = "string", description = "Short 3-5 word task description.", required = true),
                     ToolParameterSchema(name = "prompt", type = "string", description = "Self-contained task for the child agent.", required = true),
                     ToolParameterSchema(name = "subagent_type", type = "string", description = "general-purpose or Explore (read-only).", required = false, default = "general-purpose"),
                     ToolParameterSchema(name = "run_in_background", type = "boolean", description = "Must be false; background execution is not supported.", required = false, default = "false"),
-                    ToolParameterSchema(name = "max_tool_calls", type = "integer", description = "Hard child tool-call limit: 1..32, default 8.", required = false, default = "8"),
-                    ToolParameterSchema(name = "timeout_seconds", type = "integer", description = "Time limit in seconds: 10..600, default 180.", required = false, default = "180"),
+                    ToolParameterSchema(name = "max_tool_calls", type = "integer", description = "Per-attempt tool-call limit: 1..32, default 8; renewed on retry.", required = false, default = "8"),
+                    ToolParameterSchema(name = "timeout_seconds", type = "integer", description = "Per-attempt time limit in seconds: 10..600, default 180; timeout triggers retry.", required = false, default = "180"),
                 )
             ),
             ToolPrompt(
                 name = "run_subagents",
-                description = "Run multiple independent subagents CONCURRENTLY in a single call. Submit all independent tasks together; every child is launched before results are awaited. Do not call run_subagent sequentially for independent tasks. Returns an ordered result for every child, including failures. Uses the Subagent model setting and inherits parent permissions/workspace. No agent-count or concurrency quota; parent cancellation stops all children. This call waits for all results and does not detach background work.",
+                description = "Run multiple independent subagents CONCURRENTLY in a single call. Submit all independent tasks together; every child is launched before results are awaited. Do not call run_subagent sequentially for independent tasks. Failed child executions automatically retry until success or parent cancellation; successful siblings are not restarted. Returns an ordered result for every child. Uses the Subagent model setting and inherits parent permissions/workspace. No agent-count or concurrency quota; parent cancellation stops all children. This call waits for all results and does not detach background work.",
                 parametersStructured = listOf(
                     ToolParameterSchema(name = "tasks", type = "string", description = "Nonempty JSON array. Each object requires description and prompt; optional subagent_type (general-purpose or Explore), run_in_background (false only), max_tool_calls (1..32, default 8), timeout_seconds (10..600, default 180). Each prompt must be self-contained; tasks must not depend on sibling results or conflict over shared writes.", required = true),
                 )
@@ -101,19 +101,19 @@ object SystemToolPrompts {
         tools = listOf(
             ToolPrompt(
                 name = "run_subagent",
-                description = "启动一个同步的配置文件型子智能体并返回结构化结果。多个独立任务必须使用一次 run_subagents 批量提交，不要逐个等待 run_subagent。使用子智能体功能模型配置，继承父会话的角色、权限与工作区，子任务使用全新上下文。当前不支持后台执行。",
+                description = "启动一个同步的配置文件型子智能体并返回结构化结果。多个独立任务必须使用一次 run_subagents 批量提交，不要逐个等待 run_subagent。使用子智能体功能模型配置，继承父会话的角色、权限与工作区，子任务使用全新上下文。执行失败或单次超时会自动重试直到成功或父任务取消，不限制总重试次数。当前不支持后台执行。",
                 parametersStructured = listOf(
                     ToolParameterSchema(name = "description", type = "string", description = "简短的 3-5 个词任务描述。", required = true),
                     ToolParameterSchema(name = "prompt", type = "string", description = "给子智能体的自包含任务。", required = true),
                     ToolParameterSchema(name = "subagent_type", type = "string", description = "general-purpose 或 Explore（只读）。", required = false, default = "general-purpose"),
                     ToolParameterSchema(name = "run_in_background", type = "boolean", description = "必须为 false；当前不支持后台执行。", required = false, default = "false"),
-                    ToolParameterSchema(name = "max_tool_calls", type = "integer", description = "子任务工具调用硬上限，1..32，默认8。", required = false, default = "8"),
-                    ToolParameterSchema(name = "timeout_seconds", type = "integer", description = "执行超时秒数，10..600，默认180。", required = false, default = "180"),
+                    ToolParameterSchema(name = "max_tool_calls", type = "integer", description = "单次尝试工具调用上限，1..32，默认8；重试重新计数。", required = false, default = "8"),
+                    ToolParameterSchema(name = "timeout_seconds", type = "integer", description = "单次尝试超时秒数，10..600，默认180；超时自动重试。", required = false, default = "180"),
                 )
             ),
             ToolPrompt(
                 name = "run_subagents",
-                description = "一次启动多个子智能体并行执行。必须把所有互不依赖的任务放在同一个 tasks 数组中提交；程序先启动全部子任务，再统一等待结果，不要用多轮 run_subagent 逐个等待。按提交顺序返回每个子任务的结果与错误。使用子智能体模型设置，继承父权限和工作区，不限制智能体数量或并发。父任务取消时全部停止；调用会等待结果，不是脱离父任务的后台作业。",
+                description = "一次启动多个子智能体并行执行。必须把所有互不依赖的任务放在同一个 tasks 数组中提交；程序先启动全部子任务，再统一等待结果，不要用多轮 run_subagent 逐个等待。失败子任务自动重试直到成功或父任务取消，已成功的任务不重跑；按提交顺序返回结果。使用子智能体模型设置，继承父权限和工作区，不限制智能体数量或并发。父任务取消时全部停止；调用会等待结果，不是脱离父任务的后台作业。",
                 parametersStructured = listOf(
                     ToolParameterSchema(name = "tasks", type = "string", description = "非空 JSON 数组。每项必填 description、prompt；可选 subagent_type（general-purpose 或 Explore）、run_in_background（只能 false）、max_tool_calls（1..32，默认 8）、timeout_seconds（10..600，默认 180）。每个 prompt 自包含，各任务不能依赖彼此结果或冲突写入同一资源。", required = true),
                 )

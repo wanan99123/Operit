@@ -61,83 +61,121 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
             return@flow
         }
         val roundId = batchRoundId ?: com.ai.assistance.operit.data.stats.SubagentProgressStore.beginRound(parentChatId)
-        val childToolIds = java.util.IdentityHashMap<com.ai.assistance.operit.data.model.ToolInvocation, String>()
+        var previousAttemptSummary: String? = null
         com.ai.assistance.operit.data.stats.SubagentProgressStore.start(parentChatId,
             com.ai.assistance.operit.data.stats.SubagentProgress(id, request.profile.wireName, request.description), roundId)
         try {
-            val mapping = FunctionalConfigManager(appContext)
-                .getConfigMappingForFunction(FunctionType.SUBAGENT)
-            val configId = mapping.configId
-            val modelIndex = mapping.modelIndex
-            // Model overrides only apply to CHAT, which also runs the full tool-enabled chat pipeline.
-            // Read the dedicated mapping once so context budgeting and execution use the same model.
-            val child = EnhancedAIService.createSubagentInstance(appContext, request.profile)
-            service = child
-            emit(ToolResult(tool.name, true, StringResultData(
-                JSONObject().put("agentId", id).put("agentType", request.profile.wireName)
-                    .put("description", request.description).put("status", "running")
-                    .put("message", appContext.getString(R.string.chat_subagent_running)).toString()
-            )))
-            val result = withTimeout(request.timeoutSeconds * 1000L) {
-                val config = child.getModelConfigForFunction(FunctionType.CHAT, configId, modelIndex)
-                val maxContextTokens = (config.contextLength.toDouble() * 1024.0).toInt()
-                require(maxContextTokens > 0) { "Subagent model context length must be configured" }
-                require(config.summaryTokenThreshold.toDouble() > 0.0 && config.summaryTokenThreshold.toDouble() <= 1.0) {
-                    "Invalid subagent context threshold"
-                }
-                val prompt = buildString {
-                    appendLine("Complete this delegated task and return a concise result to the parent agent:")
-                    appendLine(request.prompt)
-                    if (request.profile == SubagentProfile.EXPLORE) {
-                        appendLine("READ-ONLY MODE: search and read existing files only. No shell, packages, changes or downloads.")
-                        appendLine("Allowed tools: ${SubagentPolicy.exploreTools.joinToString()}.")
-                    }
-                    appendLine("Do not delegate again. Keep tool calls within ${request.maxToolCalls}.")
-                    appendLine("Do not ask the user questions. If blocked, state the blocker and stop.")
-                    appendLine("Return findings and verification, not hidden reasoning or raw tool markup.")
-                }
-                child.sendMessage(EnhancedAIService.SendMessageOptions(
-                    message = prompt,
-                    maxTokens = maxContextTokens,
-                    tokenUsageThreshold = config.summaryTokenThreshold.toDouble(),
-                    chatId = "subagent:$id",
-                    chatHistory = emptyList(),
-                    workspacePath = parent.workspacePath,
-                    workspaceEnv = parent.workspaceEnv,
-                    functionType = FunctionType.CHAT,
-                    isSubTask = true,
-                    roleCardId = parent.callerCardId,
-                    enableMemoryAutoUpdate = false,
-                    notifyReplyOverride = false,
-                    customSystemPromptTemplate = SystemPromptConfig.SUBTASK_AGENT_PROMPT_TEMPLATE,
-                    chatModelConfigIdOverride = configId,
-                    chatModelIndexOverride = modelIndex,
-                    memorySpaceIdOverride = parent.memorySpaceId,
-                    maxToolCalls = request.maxToolCalls,
-                    onChildToolEvent = { invocation, status, _ ->
-                        if (status == "started") toolCalls.incrementAndGet()
-                        val callId = synchronized(childToolIds) {
-                            childToolIds.getOrPut(invocation) { "tool_subagent_${id}_${UUID.randomUUID()}" }
+            val result = SubagentRetryRunner.run(
+                onFailure = { attempt, error ->
+                    AppLogger.e(TAG, "Subagent attempt $attempt failed; retrying: $id", error)
+                    com.ai.assistance.operit.data.stats.SubagentProgressStore.retry(
+                        parentChatId, id, attempt, error.message ?: error.javaClass.simpleName
+                    )
+                    emit(ToolResult(tool.name, true, StringResultData(
+                        JSONObject().put("agentId", id).put("status", "retrying")
+                            .put("attempt", attempt).put("error", error.message ?: error.javaClass.simpleName).toString()
+                    )))
+                },
+            ) { attempt, previousError ->
+                com.ai.assistance.operit.data.stats.SubagentProgressStore.beginAttempt(parentChatId, id, attempt)
+                val childToolIds = java.util.IdentityHashMap<com.ai.assistance.operit.data.model.ToolInvocation, String>()
+                try {
+                    val mapping = FunctionalConfigManager(appContext)
+                        .getConfigMappingForFunction(FunctionType.SUBAGENT)
+                    val configId = mapping.configId
+                    val modelIndex = mapping.modelIndex
+                    // Model overrides only apply to CHAT, which also runs the full tool-enabled chat pipeline.
+                    // Read the dedicated mapping once so context budgeting and execution use the same model.
+                    val child = EnhancedAIService.createSubagentInstance(appContext, request.profile)
+                    service = child
+                    emit(ToolResult(tool.name, true, StringResultData(
+                        JSONObject().put("agentId", id).put("agentType", request.profile.wireName)
+                            .put("description", request.description).put("status", "running")
+                            .put("message", appContext.getString(R.string.chat_subagent_running)).toString()
+                    )))
+                    withTimeout(request.timeoutSeconds * 1000L) {
+                        val config = child.getModelConfigForFunction(FunctionType.CHAT, configId, modelIndex)
+                        val maxContextTokens = (config.contextLength.toDouble() * 1024.0).toInt()
+                        require(maxContextTokens > 0) { "Subagent model context length must be configured" }
+                        require(config.summaryTokenThreshold.toDouble() > 0.0 && config.summaryTokenThreshold.toDouble() <= 1.0) {
+                            "Invalid subagent context threshold"
                         }
-                        val name = if (invocation.tool.name == "package_proxy" || invocation.tool.name == "proxy") {
-                            invocation.tool.parameters.firstOrNull { it.name == "tool_name" }?.value.orEmpty()
-                        } else invocation.tool.name
-                        com.ai.assistance.operit.data.stats.SubagentProgressStore.tool(parentChatId, id,
-                            com.ai.assistance.operit.data.stats.SubagentToolProgress(callId, name, status))
-                    },
-                )).collect { currentCoroutineContext().ensureActive() }
-                currentCoroutineContext().ensureActive()
-                child.getSubagentFailure()?.let { throw IllegalStateException(it) }
-                val reply = child.getSubagentFinalReply()
-                    ?: throw IllegalStateException("Subagent did not produce a final answer")
-                val summary = ChatUtils.removeThinkingContent(reply)
-                    .replace(ChatMarkupRegex.statusTag, "")
-                    .replace(ChatMarkupRegex.statusSelfClosingTag, "")
-                    .trim().take(16_000)
-                require(summary.isNotBlank()) { "Subagent returned no usable summary" }
-                SubagentOutput.completed(id, request, summary, toolCalls.get(),
-                    (System.nanoTime() - startedAt) / 1_000_000,
-                    child.getCurrentInputTokenCount(), child.getCurrentOutputTokenCount())
+                        val prompt = buildString {
+                            appendLine("Complete this delegated task and return a concise result to the parent agent:")
+                            appendLine(request.prompt)
+                            if (previousError != null) {
+                                appendLine("Retry attempt $attempt. Previous failure: ${previousError.take(2000)}")
+                                appendLine("Inspect existing workspace state and verify prior outputs before changing anything. Continue unfinished work; do not repeat completed or irreversible actions. Do not claim success unless verified.")
+                                previousAttemptSummary?.let { appendLine("Previous attempt summary: $it") }
+                            }
+                            if (request.profile == SubagentProfile.EXPLORE) {
+                                appendLine("READ-ONLY MODE: search and read existing files only. No shell, packages, changes or downloads.")
+                                appendLine("Allowed tools: ${SubagentPolicy.exploreTools.joinToString()}.")
+                            }
+                            appendLine("Do not delegate again. Keep tool calls within ${request.maxToolCalls}.")
+                            appendLine("Do not ask the user questions. If blocked, state the blocker and stop.")
+                            appendLine("Return findings and verification, not hidden reasoning or raw tool markup.")
+                        }
+                        child.sendMessage(EnhancedAIService.SendMessageOptions(
+                            message = prompt,
+                            maxTokens = maxContextTokens,
+                            tokenUsageThreshold = config.summaryTokenThreshold.toDouble(),
+                            chatId = "subagent:$id",
+                            chatHistory = emptyList(),
+                            workspacePath = parent.workspacePath,
+                            workspaceEnv = parent.workspaceEnv,
+                            functionType = FunctionType.CHAT,
+                            isSubTask = true,
+                            roleCardId = parent.callerCardId,
+                            enableMemoryAutoUpdate = false,
+                            notifyReplyOverride = false,
+                            customSystemPromptTemplate = SystemPromptConfig.SUBTASK_AGENT_PROMPT_TEMPLATE,
+                            chatModelConfigIdOverride = configId,
+                            chatModelIndexOverride = modelIndex,
+                            memorySpaceIdOverride = parent.memorySpaceId,
+                            maxToolCalls = request.maxToolCalls,
+                            onChildToolEvent = { invocation, status, _ ->
+                                if (status == "started") toolCalls.incrementAndGet()
+                                val callId = synchronized(childToolIds) {
+                                    childToolIds.getOrPut(invocation) { "tool_subagent_${id}_${UUID.randomUUID()}" }
+                                }
+                                val name = if (invocation.tool.name == "package_proxy" || invocation.tool.name == "proxy") {
+                                    invocation.tool.parameters.firstOrNull { it.name == "tool_name" }?.value.orEmpty()
+                                } else invocation.tool.name
+                                com.ai.assistance.operit.data.stats.SubagentProgressStore.tool(parentChatId, id,
+                                    com.ai.assistance.operit.data.stats.SubagentToolProgress(callId, name, status))
+                            },
+                        )).collect { currentCoroutineContext().ensureActive() }
+                        currentCoroutineContext().ensureActive()
+                        child.getSubagentFailure()?.let { throw IllegalStateException(it) }
+                        val reply = child.getSubagentFinalReply()
+                            ?: throw IllegalStateException("Subagent did not produce a final answer")
+                        val summary = ChatUtils.removeThinkingContent(reply)
+                            .replace(ChatMarkupRegex.statusTag, "")
+                            .replace(ChatMarkupRegex.statusSelfClosingTag, "")
+                            .trim().take(16_000)
+                        require(summary.isNotBlank()) { "Subagent returned no usable summary" }
+                        SubagentOutput.completed(id, request, summary, toolCalls.get(),
+                            (System.nanoTime() - startedAt) / 1_000_000,
+                            child.getCurrentInputTokenCount(), child.getCurrentOutputTokenCount())
+                    }
+                } finally {
+                    // Every attempt owns a fresh child service and finite budget. Close it before
+                    // retrying, even when its model stream fails or the parent is cancelled.
+                    withContext(NonCancellable) {
+                        try {
+                            service?.getSubagentFinalReply()?.let {
+                                previousAttemptSummary = ChatUtils.removeThinkingContent(it)
+                                    .replace(ChatMarkupRegex.statusTag, "")
+                                    .replace(ChatMarkupRegex.statusSelfClosingTag, "").trim().take(8_000)
+                            }
+                        } finally {
+                            val attemptService = service
+                            service = null
+                            attemptService?.closeSubagentInstance()
+                        }
+                    }
+                }
             }
             finalStatus = "completed"
             emit(ToolResult(tool.name, true, StringResultData(result.toString())))

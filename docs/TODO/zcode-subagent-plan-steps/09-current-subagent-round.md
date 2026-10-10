@@ -8,7 +8,7 @@ Round identity is internal, not a user tool parameter. Delayed starts from a sup
 
 ## Failure handling
 
-A child failure is returned to the parent with its error. Child timeout closes its service and reports timed_out. A batch awaits all children and preserves individual successes and errors in submission order; an ordinary child failure does not cancel siblings. Parent cancellation cancels the whole batch and performs child cleanup. No automatic retry or rollback of child file changes is performed.
+A child failure is returned to the parent with its error. Child timeout closes its service and reports timed_out. A batch awaits all children and preserves individual successes and errors in submission order; an ordinary child failure does not cancel siblings. Parent cancellation cancels the whole batch and performs child cleanup. Execution failures and child timeouts now retry until success or parent cancellation, as specified in [automatic retry](10-subagent-retry-until-success.md). No rollback of child file changes is performed.
 
 ## Verification
 

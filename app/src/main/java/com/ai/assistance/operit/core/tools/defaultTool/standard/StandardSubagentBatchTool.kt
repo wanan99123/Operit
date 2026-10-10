@@ -38,8 +38,8 @@ class StandardSubagentBatchTool(context: Context) : ToolExecutor {
         }
         val startedAt = System.nanoTime()
         val results = SubagentBatchRunner.run(requests, roundExecutor)
-        // Batch delivery succeeded even when individual children failed. Keep all results visible
-        // to the parent instead of reducing partial success to one generic tool error.
+        // Valid children retry internally until successful or cancelled. Preserve ordered results
+        // and any delegation/lifecycle errors rather than hiding them in one generic error.
         val output = SubagentBatchOutput.completed(
             requests, results, (System.nanoTime() - startedAt) / 1_000_000,
         )

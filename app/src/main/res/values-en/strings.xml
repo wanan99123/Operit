@@ -8543,4 +8543,6 @@
     <string name="function_desc_plan_execution">Used by Implement Plan to execute the current checklist. Its model binding is independent of generation and subagents. If unset, use the first model in the default configuration.</string>
     <string name="plan_models_use_default">Use Default Model</string>
     <string name="plan_models_default_notice">Plan generation, implementation and subagents have separate model selections. Unset selections and Use Default Model select the first model in the default configuration.</string>
+    <string name="plan_agent_retrying">Failed, retrying</string>
+    <string name="plan_agent_attempt">Attempt %1$d</string>
 </resources>
