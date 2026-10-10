@@ -161,8 +161,16 @@ fun FunctionalConfigScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
+                item {
+                    Text(
+                        text = stringResource(R.string.plan_models_default_notice),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
                 // 功能类型列表
-                items(FunctionType.values().filter { it != FunctionType.PLAN_GENERATION && it != FunctionType.PLAN_EXECUTION }) { functionType ->
+                items(FunctionType.values().filter { it != FunctionType.PLAN_EXECUTION }) { functionType ->
                     val currentConfigMapping =
                             configMappingWithIndex.value[functionType]
                                     ?: FunctionConfigMapping(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0)
@@ -357,7 +365,7 @@ fun FunctionConfigCard(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                if (functionType == FunctionType.SUBAGENT) {
+                if (functionType == FunctionType.PLAN_GENERATION || functionType == FunctionType.SUBAGENT) {
                     TextButton(
                         onClick = { onConfigSelected(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0) }
                     ) {
@@ -703,9 +711,9 @@ fun FunctionConfigCard(
                                                     ).collect { chunk -> buffer.append(chunk) }
                                                     buffer.toString()
                                                 }
-                                                FunctionType.PLAN_GENERATION, FunctionType.PLAN_EXECUTION ->
-                                                    error("Plan stages no longer have model configuration entries")
-                                                FunctionType.CHAT, FunctionType.SUBAGENT -> {
+                                                FunctionType.PLAN_EXECUTION ->
+                                                    error("Plan implementation has no independent model configuration entry")
+                                                FunctionType.CHAT, FunctionType.SUBAGENT, FunctionType.PLAN_GENERATION -> {
                                                     val parameters =
                                                         modelConfigManager.getModelParametersForConfig(configWithSelectedModel.id)
                                                     val buffer = StringBuilder()

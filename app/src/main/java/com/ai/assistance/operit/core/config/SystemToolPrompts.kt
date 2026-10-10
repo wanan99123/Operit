@@ -63,10 +63,10 @@ object SystemToolPrompts {
             ),
             ToolPrompt(
                 name = "update_plan",
-                description = "Create or update the working plan for this session. The plan is rendered to the user as live progress. Send the complete list each call; it replaces the previous plan. Keep exactly one step in_progress at a time and mark it completed when done. Use it for multi-step work, not for single-step tasks. The selected chat model stays unchanged throughout planning, implementation and review. model_stage is optional workflow metadata only.",
+                description = "Create or update the working plan for this session. The plan is rendered to the user as live progress. Send the complete list each call; it replaces the previous plan. Keep exactly one step in_progress at a time and mark it completed when done. Use it for multi-step work, not for single-step tasks. Before planning, call update_plan alone with model_stage=generation (todos=[] may bootstrap the phase); the next request uses the Generate Plan model. Generation and review use the planner binding. Before implementation set implementation; implementation and chat use the selected chat/role-card model, never a separate implementation model. Set the phase before that work; do not batch phase changes with implementation or subagent tools.",
                 parametersStructured = listOf(
                     ToolParameterSchema(name = "todos", type = "string", description = "JSON array of {content, status, priority}. status: pending|in_progress|completed. priority: high|medium|low.", required = true),
-                    ToolParameterSchema(name = "model_stage", type = "string", description = "Optional workflow metadata: generation | implementation | review | chat. Does not select or switch models. Omitted: inferred from todo statuses.", required = false),
+                    ToolParameterSchema(name = "model_stage", type = "string", description = "generation | implementation | review | chat. Generation/review use the planner; implementation/chat use the selected chat model. Omitted: inferred from todo statuses.", required = false),
                 )
             ),
             ToolPrompt(
@@ -129,10 +129,10 @@ object SystemToolPrompts {
             ),
             ToolPrompt(
                 name = "update_plan",
-                description = "创建或更新本会话的工作计划。计划会作为实时进度展示给用户。每次必须发送完整列表，它会整体替换上一版。同一时间只保留一个 in_progress 步骤，完成后标记为 completed。适用于多步骤任务，单步任务不需要。计划、实施和审查始终使用对话框选定的聊天模型。model_stage 仅为可选的工作阶段元数据，不切换模型。",
+                description = "创建或更新本会话的工作计划。计划会作为实时进度展示给用户。每次必须发送完整列表，它会整体替换上一版。同一时间只保留一个 in_progress 步骤，完成后标记为 completed。适用于多步骤任务，单步任务不需要。生成计划前单独调用 update_plan 设 model_stage=generation（可用 todos=[] 仅切换阶段），下一次请求使用“生成计划”配置；generation 与 review 使用计划模型。实施前设 implementation，实施与普通聊天使用对话框选定模型或角色卡绑定模型，不切换到独立实施模型。先切换阶段再工作，不与实施或子智能体工具混在同批。",
                 parametersStructured = listOf(
                     ToolParameterSchema(name = "todos", type = "string", description = "JSON 数组，元素为 {content, status, priority}。status：pending|in_progress|completed；priority：high|medium|low。", required = true),
-                    ToolParameterSchema(name = "model_stage", type = "string", description = "Optional workflow metadata: generation | implementation | review | chat. Does not select or switch models. Omitted: inferred from todo statuses.", required = false),
+                    ToolParameterSchema(name = "model_stage", type = "string", description = "generation | implementation | review | chat. Generation/review use the planner; implementation/chat use the selected chat model. Omitted: inferred from todo statuses.", required = false),
                 )
             ),
             ToolPrompt(

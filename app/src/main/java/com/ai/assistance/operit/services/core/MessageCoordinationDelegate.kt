@@ -263,6 +263,23 @@ class MessageCoordinationDelegate(
         }
     }
 
+    /** Keep context-window calculations aligned with the live generation route, without overwriting chat selection. */
+    private suspend fun resolvePhaseRequestTarget(
+        chatId: String?,
+        configId: String?,
+        modelIndex: Int?,
+        promptFunctionType: PromptFunctionType,
+    ): FunctionConfigMapping {
+        if (promptFunctionType != PromptFunctionType.CHAT) {
+            return FunctionConfigMapping(configId ?: FunctionalConfigManager.DEFAULT_CONFIG_ID, modelIndex ?: 0)
+        }
+        val mappings = FunctionalConfigManager(context).functionConfigMappingWithIndexFlow.first()
+        val stage = chatId?.let { com.ai.assistance.operit.data.stats.PlanModelStageStore.read(it) }
+        return com.ai.assistance.operit.data.preferences.SelectedRequestModel.resolve(
+            FunctionType.CHAT, mappings, configId, modelIndex, false, stage,
+        )
+    }
+
     suspend fun refreshStableContextWindow(
         chatId: String? = null,
         roleCardId: String? = null,
@@ -286,6 +303,9 @@ class MessageCoordinationDelegate(
                 ?: currentMemorySpaceIdOverride
                 ?: effectiveRoleCardId?.let { resolveRoleCardMemoryProfileOverride(it) }
 
+        val requestTarget = resolvePhaseRequestTarget(
+            targetChatId, effectiveChatModelConfigIdOverride, effectiveChatModelIndexOverride, effectivePromptFunctionType,
+        )
         val newWindowSize =
             recalculateStableWindowSize(
                 service = service,
@@ -294,8 +314,8 @@ class MessageCoordinationDelegate(
                 promptFunctionType = effectivePromptFunctionType,
                 groupOrchestrationMode = groupOrchestrationMode,
                 groupParticipantNamesText = groupParticipantNamesText,
-                chatModelConfigIdOverride = effectiveChatModelConfigIdOverride,
-                chatModelIndexOverride = effectiveChatModelIndexOverride,
+                chatModelConfigIdOverride = requestTarget.configId,
+                chatModelIndexOverride = requestTarget.modelIndex,
                 memorySpaceIdOverride = effectiveMemorySpaceIdOverride
             )
         val (inputTokens, outputTokens) = tokenStatsDelegate.getCumulativeTokenCounts(targetChatId)
@@ -558,6 +578,7 @@ class MessageCoordinationDelegate(
             cancelPendingAutoContinuation(chatId, restoreIdleIfPendingState = false)
         }
         if (
+            com.ai.assistance.operit.data.stats.PlanModelStageStore.read(chatId) == null &&
             turnOptions.persistTurn &&
             enableGroupOrchestration &&
             shouldRunGroupOrchestration(
@@ -638,7 +659,7 @@ class MessageCoordinationDelegate(
                         else FunctionConfigMapping(id, (index ?: 0).coerceAtLeast(0))
                     }
                 }
-                // Every turn, including the first, honors the selected chat/role-card model.
+                // Preserve the ordinary selection so returning from generation never sticks to the planner.
                 val resolvedChatModelConfigIdOverride = ordinaryTarget.configId
                 val resolvedChatModelIndexOverride = ordinaryTarget.modelIndex
                 val resolvedMemorySpaceIdOverride =
@@ -667,7 +688,10 @@ class MessageCoordinationDelegate(
         val resolvedMemorySpaceIdOverride = resolvedOverrides.third
         val chatContextSettings =
             runBlocking {
-                resolveChatContextSettingsForRequest(resolvedChatModelConfigIdOverride)
+                val requestTarget = resolvePhaseRequestTarget(
+                    chatId, resolvedChatModelConfigIdOverride, resolvedChatModelIndexOverride, promptFunctionType,
+                )
+                resolveChatContextSettingsForRequest(requestTarget.configId)
             }
 
         if (!isAutoContinuation) {
@@ -1961,8 +1985,11 @@ class MessageCoordinationDelegate(
                 if (currentChatId != null) {
                     recordCompressionDiagnostics(currentChatId, compressionReason, currentMessages, summaryMessage)
                 }
-                val contextConfigId = effectiveChatModelConfigIdOverride
-                val contextModelIndex = effectiveChatModelIndexOverride
+                val requestTarget = resolvePhaseRequestTarget(
+                    currentChatId, effectiveChatModelConfigIdOverride, effectiveChatModelIndexOverride, currentPromptFunctionType,
+                )
+                val contextConfigId = requestTarget.configId
+                val contextModelIndex = requestTarget.modelIndex
                 val refreshedWindow = refreshStableContextWindow(
                     chatId = currentChatId,
                     roleCardId = roleCardIdOverride,

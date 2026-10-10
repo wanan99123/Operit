@@ -8542,7 +8542,7 @@
     <string name="function_desc_plan_generation">Used by Generate Plan and Review in the plan panel; both share this configuration and model. Select independently of implementation and subagents. If unset, use the first model in the default configuration.</string>
     <string name="function_desc_plan_execution">Used by Implement Plan to execute the current checklist. Its model binding is independent of generation and subagents. If unset, use the first model in the default configuration.</string>
     <string name="plan_models_use_default">Use Default Model</string>
-    <string name="plan_models_default_notice">Plan generation, implementation and subagents have separate model selections. Unset selections and Use Default Model select the first model in the default configuration.</string>
+    <string name="plan_models_default_notice">Plan generation and review use the Generate Plan model binding (the default config when unset). Implementation uses the selected chat model or role-card binding.</string>
     <string name="plan_agent_retrying">Failed, retrying</string>
     <string name="plan_agent_attempt">Attempt %1$d</string>
     <string name="chat_summary_not_inserted">The summary was not saved. Automatic continuation has stopped.</string>

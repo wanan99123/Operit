@@ -465,6 +465,7 @@ class EnhancedAIService private constructor(
         val conversationHistory: MutableList<PromptTurn>,
         val eventChannel: MutableSharedStream<TextStreamEvent>,
         var modelExecutionSnapshot: ModelExecutionSnapshot? = null,
+        val routingChatId: String? = null,
         val delegatedModelRouting: Boolean = false,
         var modelRoutingTarget: com.ai.assistance.operit.data.preferences.FunctionConfigMapping? = null,
         var modelPromptNeedsRefresh: Boolean = false,
@@ -479,6 +480,12 @@ class EnhancedAIService private constructor(
         val workspacePath: String? = null,
         val workspaceEnv: String? = null,
     )
+
+    private val lastRoutedTargets = ConcurrentHashMap<String, com.ai.assistance.operit.data.preferences.FunctionConfigMapping>()
+    suspend fun getLastRoutedDisplayProviderAndModel(chatId: String): Pair<String, String>? {
+        val target = lastRoutedTargets[chatId] ?: return null
+        return getDisplayProviderAndModelForFunction(FunctionType.CHAT, target.configId, target.modelIndex)
+    }
 
     private val activeExecutionContexts = ConcurrentHashMap<Int, MessageExecutionContext>()
     private val nextExecutionContextId = AtomicInteger(0)
@@ -517,10 +524,13 @@ class EnhancedAIService private constructor(
         ensureInitialized()
         val mappings = com.ai.assistance.operit.data.preferences.FunctionalConfigManager(this.context)
             .functionConfigMappingWithIndexFlow.first()
-        // The composer selection owns every parent request, including tool continuations.
+        // Read the live phase at each request boundary, including tool continuations.
+        val stage = if (!context.delegatedModelRouting && functionType == FunctionType.CHAT) {
+            context.routingChatId?.let { com.ai.assistance.operit.data.stats.PlanModelStageStore.read(it) }
+        } else null
         val target = com.ai.assistance.operit.data.preferences.SelectedRequestModel.resolve(
             functionType, mappings, chatModelConfigIdOverride, chatModelIndexOverride,
-            context.delegatedModelRouting,
+            context.delegatedModelRouting, stage,
         )
         // Acquire at every boundary: an unchanged mapping may still have edited configuration or
         // model parameters. The manager retires stale entries without cancelling other leases.
@@ -537,6 +547,9 @@ class EnhancedAIService private constructor(
             context.modelPromptNeedsRefresh = true
         }
         context.modelRoutingTarget = target
+        if (!context.delegatedModelRouting && functionType == FunctionType.CHAT) {
+            context.routingChatId?.let { lastRoutedTargets[it] = target }
+        }
         val snapshot = ModelExecutionSnapshot(lease)
         AppLogger.d(TAG, "Model execution snapshot: configId=${lease.modelConfig.id}, index=${lease.modelIndex}, providerModel=${lease.service.providerModel}")
         context.modelExecutionSnapshot = snapshot
@@ -1067,6 +1080,7 @@ class EnhancedAIService private constructor(
                     executionId = nextExecutionContextId.incrementAndGet(),
                     conversationHistory = chatHistory.toMutableList(),
                     eventChannel = eventChannel,
+                    routingChatId = chatId,
                     routingSystemPromptTemplate = customSystemPromptTemplate,
                     routingGroupParticipantNamesText = groupParticipantNamesText,
                     routingProxySenderName = proxySenderName,
@@ -1079,6 +1093,7 @@ class EnhancedAIService private constructor(
                     workspacePath = options.workspacePath,
                     workspaceEnv = options.workspaceEnv,
                 )
+            if (!isSubTask && functionType == FunctionType.CHAT) chatId?.let { lastRoutedTargets.remove(it) }
             registerExecutionContext(execContext)
             var hadFatalError = false
             var providerStreamCollectionStarted = false

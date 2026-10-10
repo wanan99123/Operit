@@ -8528,7 +8528,7 @@
     <string name="function_desc_plan_generation">用于计划面板的“生成计划”和“审查”操作，两者共用此配置及模型；与实施计划和子智能体独立选择，未设置时使用默认配置中的第一个模型。</string>
     <string name="function_desc_plan_execution">用于计划面板的“实施计划”操作，根据已有清单执行任务；不与计划生成或子智能体共用模型绑定，未设置时使用默认配置中的第一个模型。</string>
     <string name="plan_models_use_default">使用默认模型</string>
-    <string name="plan_models_default_notice">计划生成、实施计划和子智能体分别选择模型；未单独配置或选择“使用默认模型”时，使用默认配置中的第一个模型。</string>
+    <string name="plan_models_default_notice">生成计划与审查使用“生成计划”模型配置；未设置时使用默认配置。计划实施使用对话框选定的聊天模型或角色卡绑定模型。</string>
     <string name="plan_agent_retrying">失败，正在重试</string>
     <string name="plan_agent_attempt">第 %1$d 次尝试</string>
     <string name="chat_summary_not_inserted">摘要未写入对话，已停止自动续聊。</string>
