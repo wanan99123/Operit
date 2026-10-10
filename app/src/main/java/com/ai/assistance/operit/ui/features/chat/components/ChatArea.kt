@@ -88,7 +88,6 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.AiReference
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.stats.SubagentProgressStore
-import com.ai.assistance.operit.ui.features.chat.components.part.ExpandableHeaderTitleStart
 import com.ai.assistance.operit.data.model.ChatMessageDisplayMode
 import com.ai.assistance.operit.data.model.ChatMessageLocatorPreview
 
@@ -533,9 +532,10 @@ fun ChatArea(
                     ChatStyle.BUBBLE -> (if (themeSnapshot.bubbleShowAvatar) 0.dp else 8.dp) + bubbleAiContentPaddingLeft.dp
                 }
                 SubagentConversationProgress(
-                    conversationSubagents,
-                    // Align the status circle with the count/title to the right of the tool disclosure arrow.
-                    modifier = Modifier.padding(start = subagentBodyStart + ExpandableHeaderTitleStart),
+                    agents = conversationSubagents,
+                    chatId = currentChatId,
+                    // The shared disclosure header applies its own title inset to child status indicators.
+                    modifier = Modifier.padding(start = subagentBodyStart),
                 )
             }
             if (showLoadingIndicator) {
