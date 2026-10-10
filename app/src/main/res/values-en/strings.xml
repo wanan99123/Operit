@@ -8537,4 +8537,24 @@
     <string name="plan_agent_timed_out">Timed out</string>
     <string name="plan_agent_cancelled">Cancelled</string>
     <string name="plan_agent_tool_progress">Tool calls %1$d / %2$d</string>
+    <string name="function_type_plan_generation">Plan Generation</string>
+    <string name="function_type_plan_execution">Plan Implementation</string>
+    <string name="function_desc_plan_generation">Used by Generate Plan in the plan panel. Select a configuration and model independently of implementation and subagents. If unset, use the first model in the default configuration.</string>
+    <string name="function_desc_plan_execution">Used by Implement Plan to execute the current checklist. Its model binding is independent of generation and subagents. If unset, use the first model in the default configuration.</string>
+    <string name="plan_models_use_default">Use Default Model</string>
+    <string name="plan_models_default_notice">Plan generation, implementation and subagents have separate model selections. Unset selections and Use Default Model select the first model in the default configuration.</string>
+    <string name="plan_action_generate">Generate Plan</string>
+    <string name="plan_action_implement">Implement Plan</string>
+    <string name="plan_stage_no_request">Enter a task in the composer or send a task in the current conversation first.</string>
+    <string name="plan_stage_busy">This conversation is busy. Wait for completion or stop it first.</string>
+    <string name="plan_stage_empty">Generate a plan before implementing it.</string>
+    <string name="plan_stage_no_session">Open a conversation first.</string>
+    <string name="plan_generation_request">Generate a clear, verifiable implementation plan for the request below, using the current conversation and workspace. Perform only read-only investigation if needed. Write the complete checklist with update_plan, with all steps initially pending, then explain the plan. Do not implement changes or launch subagents in this stage.
+
+Request:
+%1$s</string>
+    <string name="plan_implementation_request">Implement the current plan below using the current conversation and workspace. Update the complete checklist with update_plan when steps start and finish. Submit independent tasks without conflicting writes together in ONE run_subagents call; do not await run_subagent calls one by one. Respect dependencies for other steps. Subagents use their own model setting. Respect current permissions, verify results, and do not claim unperformed operations succeeded.
+
+Current plan:
+%1$s</string>
 </resources>

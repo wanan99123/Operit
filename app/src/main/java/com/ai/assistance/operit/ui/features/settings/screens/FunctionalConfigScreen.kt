@@ -161,6 +161,14 @@ fun FunctionalConfigScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
+                item {
+                    Text(
+                        text = stringResource(R.string.plan_models_default_notice),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
                 // 功能类型列表
                 items(FunctionType.values()) { functionType ->
                     val currentConfigMapping =
@@ -357,6 +365,16 @@ fun FunctionConfigCard(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                if (functionType == FunctionType.PLAN_GENERATION ||
+                    functionType == FunctionType.PLAN_EXECUTION ||
+                    functionType == FunctionType.SUBAGENT
+                ) {
+                    TextButton(
+                        onClick = { onConfigSelected(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0) }
+                    ) {
+                        Text(stringResource(R.string.plan_models_use_default))
+                    }
+                }
                 // 当前配置
                 Surface(
                         modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
@@ -696,7 +714,7 @@ fun FunctionConfigCard(
                                                     ).collect { chunk -> buffer.append(chunk) }
                                                     buffer.toString()
                                                 }
-                                                FunctionType.CHAT, FunctionType.SUBAGENT -> {
+                                                FunctionType.CHAT, FunctionType.SUBAGENT, FunctionType.PLAN_GENERATION, FunctionType.PLAN_EXECUTION -> {
                                                     val parameters =
                                                         modelConfigManager.getModelParametersForConfig(configWithSelectedModel.id)
                                                     val buffer = StringBuilder()
@@ -985,6 +1003,8 @@ fun getFunctionDisplayName(functionType: FunctionType): String {
         FunctionType.AUDIO_RECOGNITION -> stringResource(id = R.string.function_type_audio_recognition)
         FunctionType.VIDEO_RECOGNITION -> stringResource(id = R.string.function_type_video_recognition)
         FunctionType.SUBAGENT -> stringResource(id = R.string.function_type_subagent)
+        FunctionType.PLAN_GENERATION -> stringResource(id = R.string.function_type_plan_generation)
+        FunctionType.PLAN_EXECUTION -> stringResource(id = R.string.function_type_plan_execution)
     }
 }
 
@@ -1004,6 +1024,8 @@ fun getFunctionDescription(functionType: FunctionType): String {
         FunctionType.AUDIO_RECOGNITION -> stringResource(id = R.string.function_desc_audio_recognition)
         FunctionType.VIDEO_RECOGNITION -> stringResource(id = R.string.function_desc_video_recognition)
         FunctionType.SUBAGENT -> stringResource(id = R.string.function_desc_subagent)
+        FunctionType.PLAN_GENERATION -> stringResource(id = R.string.function_desc_plan_generation)
+        FunctionType.PLAN_EXECUTION -> stringResource(id = R.string.function_desc_plan_execution)
     }
 }
 

@@ -13,5 +13,7 @@ enum class FunctionType {
     IMAGE_RECOGNITION, // 图像识别
     AUDIO_RECOGNITION, // 音频识别
     VIDEO_RECOGNITION, // 视频识别
-    SUBAGENT // 子智能体
+    SUBAGENT, // 子智能体
+    PLAN_GENERATION, // 计划生成
+    PLAN_EXECUTION // 实施计划
 }

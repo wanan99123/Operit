@@ -1,6 +1,8 @@
 package com.ai.assistance.operit.core.tools.defaultTool.standard
 
 import com.ai.assistance.operit.core.tools.ToolExecutor
+import com.ai.assistance.operit.core.tools.StringResultData
+import kotlinx.coroutines.CancellationException
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.model.ToolResult
@@ -18,7 +20,8 @@ internal object SubagentBatchRunner {
                 async {
                     // Use the same native child lifecycle as single delegation, including cleanup.
                     // Never use invoke/runBlocking: they lose the parent's coroutine cancellation.
-                    executor.invokeAndStream(
+                    try {
+                        executor.invokeAndStream(
                         AITool(
                             name = "run_subagent",
                             parameters = listOf(
@@ -30,7 +33,14 @@ internal object SubagentBatchRunner {
                                 ToolParameter("timeout_seconds", request.timeoutSeconds.toString()),
                             ),
                         )
-                    ).last()
+                        ).last()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        // A failed flow or cleanup belongs to this child, not to its siblings.
+                        ToolResult("run_subagent", false, StringResultData(""),
+                            error.message ?: error.javaClass.simpleName)
+                    }
                 }
             }.awaitAll()
         }

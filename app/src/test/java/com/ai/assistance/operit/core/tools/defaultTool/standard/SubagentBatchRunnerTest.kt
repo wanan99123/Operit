@@ -124,6 +124,30 @@ class SubagentBatchRunnerTest {
         assertEquals(20, second.await().size)
     }
 
+    @Test
+    fun thrownFlowEmptyFlowAndCleanupFailureAreIsolatedToTheirOwnChild() = runTest {
+        val names = listOf("throws", "empty", "cleanup", "good")
+        val executor = fake { tool ->
+            val name = tool.parameters.single { it.name == "description" }.value
+            when (name) {
+                "throws" -> throw IllegalStateException("request failed")
+                "empty" -> Unit
+                "cleanup" -> try {
+                    emit(result("partial"))
+                } finally {
+                    throw IllegalStateException("cleanup failed")
+                }
+                else -> emit(result("ok"))
+            }
+        }
+        val results = SubagentBatchRunner.run(names.map(::request), executor)
+        assertEquals(listOf(false, false, false, true), results.map { it.success })
+        assertEquals("request failed", results[0].error)
+        assertFalse(results[1].error.isNullOrBlank())
+        assertEquals("cleanup failed", results[2].error)
+        assertEquals("ok", results[3].result.toString())
+    }
+
     private fun request(description: String) = SubagentRequest(
         description, "Inspect independently: $description", SubagentProfile.EXPLORE, 4, 30,
     )

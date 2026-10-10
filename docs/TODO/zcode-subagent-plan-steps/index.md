@@ -24,6 +24,10 @@ Subagents now use the independent SUBAGENT functional model mapping. The functio
 
 Multiple independent tasks now use one `run_subagents` call. All child flows start before results are awaited, and only delegated model services ignore the model-config concurrency gate. The single-task API is unchanged. See [Parallel subagent batches](05-parallel-subagent-batches.md) for the protocol, failure handling and deterministic overlap tests.
 
+## Independent plan models
+
+The functional model settings now expose separate Plan Generation, Plan Implementation and Subagent selections. The checklist menu offers explicit Generate Plan and Implement Plan actions that route actual requests through the chosen stage model. Unset stages use the default configuration at model index 0. See [Independent planning and implementation models](06-independent-plan-models.md) for routing and verification.
+
 ## Verification
 
 Release unit tests and :app:packageRelease run in GitHub Actions. No local Gradle or APK download is required. The application ID remains com.ai.assistance.operit. Without the matching release key, the APK is unsigned and cannot be installed or used for an in-place upgrade.

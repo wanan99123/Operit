@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -51,7 +52,11 @@ fun PlanStepsButton(
     steps: List<PlanStep>,
     sessionId: String?,
     modifier: Modifier = Modifier,
-    subagents: List<SubagentProgress> = emptyList()
+    subagents: List<SubagentProgress> = emptyList(),
+    canGeneratePlan: Boolean,
+    canImplementPlan: Boolean,
+    onGeneratePlan: () -> Unit,
+    onImplementPlan: () -> Unit,
 ) {
     var expanded by remember(sessionId) { mutableStateOf(false) }
     val completedCount = steps.count { it.status == PlanStepStatus.COMPLETED }
@@ -105,6 +110,23 @@ fun PlanStepsButton(
             modifier = Modifier.widthIn(min = 240.dp, max = 320.dp)
                 .heightIn(max = 360.dp).background(MaterialTheme.colorScheme.surface)
         ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.plan_action_generate)) },
+                enabled = canGeneratePlan,
+                onClick = {
+                    expanded = false
+                    onGeneratePlan()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.plan_action_implement)) },
+                enabled = canImplementPlan,
+                onClick = {
+                    expanded = false
+                    onImplementPlan()
+                },
+            )
+            HorizontalDivider()
             if (steps.isEmpty()) {
                 Text(
                     text = stringResource(R.string.plan_steps_empty),

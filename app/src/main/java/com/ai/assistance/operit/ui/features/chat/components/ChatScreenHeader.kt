@@ -173,7 +173,22 @@ fun ChatScreenHeader(
             val planSteps by actualViewModel.planSteps.collectAsState()
             val planChatId by actualViewModel.currentChatId.collectAsState()
             val subagents by actualViewModel.subagentProgress.collectAsState()
-            PlanStepsButton(steps = planSteps, sessionId = planChatId, subagents = subagents)
+            val planDraft by actualViewModel.userMessage.collectAsState()
+            val planHistory by actualViewModel.chatHistory.collectAsState()
+            val planBusy = planChatId == null || planChatId in activeStreamingChatIds
+            PlanStepsButton(
+                steps = planSteps,
+                sessionId = planChatId,
+                subagents = subagents,
+                canGeneratePlan = !planBusy && (planDraft.text.isNotBlank() || planHistory.any { it.sender == "user" }),
+                canImplementPlan = !planBusy && planSteps.any { it.status != com.ai.assistance.operit.data.model.PlanStepStatus.COMPLETED },
+                onGeneratePlan = {
+                    actualViewModel.sendPlanStage(com.ai.assistance.operit.data.model.PlanModelStage.GENERATION)
+                },
+                onImplementPlan = {
+                    actualViewModel.sendPlanStage(com.ai.assistance.operit.data.model.PlanModelStage.IMPLEMENTATION)
+                },
+            )
 
             // 统计信息
             val maxWindowSize = (maxWindowSizeInK * 1024).toLong().coerceAtLeast(0L)
