@@ -45,3 +45,5 @@ The development branch now uses [automatic phase model routing](08-automatic-pha
 [Current subagent round](09-current-subagent-round.md) defines replacement of prior progress cards and existing failure/cancellation behavior.
 
 [Retry until success](10-subagent-retry-until-success.md) supersedes fail-once delivery for valid child executions.
+
+[Conversation progress](11-subagent-conversation-progress.md) adds current-round task descriptions and white/green state circles directly to the conversation.
