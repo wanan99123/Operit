@@ -927,16 +927,18 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 )
 
                 if (summaryMessage != null) {
-                    // 插入总结消息
-                    chatHistoryDelegate.addSummaryMessage(
+                    // Only report insertion after the anchored summary was actually persisted.
+                    val inserted = chatHistoryDelegate.addSummaryMessage(
                         summaryMessage = summaryMessage,
                         beforeTimestamp = beforeTimestamp,
                         afterTimestamp = afterTimestamp,
                     )
-
-                    messageCoordinationDelegate.refreshStableContextWindow(chatId = currentChatId)
-
-                    uiStateDelegate.showToast(context.getString(R.string.chat_summary_inserted))
+                    if (inserted) {
+                        messageCoordinationDelegate.refreshStableContextWindow(chatId = currentChatId)
+                        uiStateDelegate.showToast(context.getString(R.string.chat_summary_inserted))
+                    } else {
+                        uiStateDelegate.showErrorMessage(context.getString(R.string.chat_summary_not_inserted))
+                    }
                 } else {
                     uiStateDelegate.showToast(context.getString(R.string.chat_summary_generation_failed))
                 }

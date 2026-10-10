@@ -276,7 +276,7 @@ fun ChatArea(
     var viewportHeightPx by remember { mutableStateOf(0) }
     val messageAnchors = remember(currentChatId) { mutableStateMapOf<Long, ChatScrollMessageAnchor>() }
     var pendingJumpToMessageTimestamp by remember(currentChatId) { mutableStateOf<Long?>(null) }
-    val subagentSessions by SubagentProgressStore.sessions.collectAsState()
+    val subagentSessions by SubagentProgressStore.conversationSessions.collectAsState()
     val conversationSubagents = subagentSessions[currentChatId].orEmpty()
     val lastMessage = chatHistory.lastOrNull()
     val pendingTargetAnchor =
@@ -526,7 +526,15 @@ fun ChatArea(
             // The shared scroll container serves both bubble and cursor styles.
             // Do not display current-round tasks beside an older history window.
             if (!hasNewerDisplayHistory) {
-                SubagentConversationProgress(conversationSubagents)
+                // Tool/code/image nodes use the expanded bubble layout, whose body does not reserve avatar width.
+                val subagentBodyStart = when (chatStyle) {
+                    ChatStyle.CURSOR -> 16.dp
+                    ChatStyle.BUBBLE -> (if (themeSnapshot.bubbleShowAvatar) 0.dp else 8.dp) + bubbleAiContentPaddingLeft.dp
+                }
+                SubagentConversationProgress(
+                    conversationSubagents,
+                    modifier = Modifier.padding(start = subagentBodyStart),
+                )
             }
             if (showLoadingIndicator) {
                 when (chatStyle) {

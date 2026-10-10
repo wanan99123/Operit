@@ -24,25 +24,19 @@ import com.ai.assistance.operit.data.stats.SubagentProgress
 
 /** Current-round projection in the conversation, independent of raw child/tool-result markup. */
 @Composable
-internal fun SubagentConversationProgress(agents: List<SubagentProgress>) {
+internal fun SubagentConversationProgress(
+    agents: List<SubagentProgress>,
+    modifier: Modifier = Modifier,
+) {
     if (agents.isEmpty()) return
-    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp),
+    Column(modifier.fillMaxWidth().padding(vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         agents.forEach { agent ->
             key(agent.agentId) {
                 val presentation = SubagentConversationStatus.fromStatus(agent.status)
-                val color = when (presentation) {
-                    SubagentConversationStatus.COMPLETED -> Color(0xFF4CAF50)
-                    SubagentConversationStatus.RUNNING, SubagentConversationStatus.RETRYING -> Color.White
-                    SubagentConversationStatus.FAILED, SubagentConversationStatus.TIMED_OUT -> MaterialTheme.colorScheme.error
-                    SubagentConversationStatus.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
-                }
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Keep the requested white circle visible on light themes and wallpaper.
-                    Box(Modifier.size(18.dp).background(Color(0xFF303030), CircleShape), contentAlignment = Alignment.Center) {
-                        Box(Modifier.size(12.dp).border(2.dp, color, CircleShape))
-                    }
+                    SubagentStatusCircle(presentation)
                     Column(Modifier.weight(1f)) {
                         Text(agent.description, style = MaterialTheme.typography.bodySmall)
                         val status = stringResource(when (presentation) {
@@ -67,4 +61,25 @@ internal fun SubagentConversationProgress(agents: List<SubagentProgress>) {
             }
         }
     }
+}
+
+/** Thin, background-free status ring shared by the conversation and input details. */
+@Composable
+internal fun SubagentStatusCircle(
+    status: SubagentConversationStatus,
+    modifier: Modifier = Modifier,
+) {
+    val color = when (status) {
+        SubagentConversationStatus.COMPLETED -> Color(0xFF34C759)
+        SubagentConversationStatus.RUNNING, SubagentConversationStatus.RETRYING -> MaterialTheme.colorScheme.onSurface
+        SubagentConversationStatus.FAILED, SubagentConversationStatus.TIMED_OUT -> MaterialTheme.colorScheme.error
+        SubagentConversationStatus.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Box(modifier.size(12.dp).then(
+        if (status == SubagentConversationStatus.COMPLETED) {
+            Modifier.background(color, CircleShape)
+        } else {
+            Modifier.border(1.5.dp, color, CircleShape)
+        }
+    ))
 }

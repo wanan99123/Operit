@@ -2448,9 +2448,15 @@ class EnhancedAIService private constructor(
         val phaseActive = context.automaticPlanRouting && context.routingChatId?.let {
             com.ai.assistance.operit.data.stats.PlanModelStageStore.read(it)
         } != null
-        val requestMaxTokens = if (phaseActive) (modelSnapshot.config.contextLength * 1024)
-            .toLong().coerceIn(0L, Int.MAX_VALUE.toLong()).toInt() else maxTokens
-        val requestTokenThreshold = if (phaseActive) modelSnapshot.config.summaryTokenThreshold.toDouble() else tokenUsageThreshold
+        val requestMaxTokens = if (phaseActive) com.ai.assistance.operit.core.chat.summaryContextWindowTokens(
+            modelSnapshot.config.contextLength,
+            modelSnapshot.config.maxContextLength,
+            modelSnapshot.config.enableMaxContextMode,
+        ) else maxTokens
+        // Phase routing must not re-enable summarization when the parent disabled it.
+        val requestTokenThreshold = if (phaseActive && onTokenLimitExceeded != null) {
+            modelSnapshot.config.summaryTokenThreshold.toDouble()
+        } else tokenUsageThreshold
         if (requestMaxTokens > 0) {
             val usageRatio = currentTokens.toDouble() / requestMaxTokens.toDouble()
             if (usageRatio >= requestTokenThreshold) {

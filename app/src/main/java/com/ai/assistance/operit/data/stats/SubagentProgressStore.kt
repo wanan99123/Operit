@@ -24,6 +24,18 @@ object SubagentProgressStore {
     val sessions: StateFlow<Map<String, List<SubagentProgress>>> = state.asStateFlow()
 
     private val rounds = mutableMapOf<String, String>()
+    private val conversationState = MutableStateFlow<Map<String, List<SubagentProgress>>>(emptyMap())
+    val conversationSessions: StateFlow<Map<String, List<SubagentProgress>>> = conversationState.asStateFlow()
+
+    private fun publish(chatId: String, agents: List<SubagentProgress>) {
+        state.value = state.value + (chatId to agents)
+        // Completed tasks remain inspectable in input details; only active rounds occupy the conversation tail.
+        conversationState.value = if (agents.any { it.status == "running" || it.status == "retrying" }) {
+            conversationState.value + (chatId to agents)
+        } else {
+            conversationState.value - chatId
+        }
+    }
 
     /** One batch is one round. Start it before launching children, never from each batch child. */
     @Synchronized
@@ -31,7 +43,7 @@ object SubagentProgressStore {
         require(chatId.isNotBlank()) { "A chat id is required" }
         val roundId = java.util.UUID.randomUUID().toString()
         rounds[chatId] = roundId
-        state.value = state.value + (chatId to emptyList())
+        publish(chatId, emptyList())
         return roundId
     }
 
@@ -40,13 +52,13 @@ object SubagentProgressStore {
         // A superseded round can still finish cleanup; it must not repopulate the new panel.
         if (roundId != null && rounds[chatId] != roundId) return
         val old = state.value[chatId].orEmpty()
-        state.value = state.value + (chatId to (old + agent))
+        publish(chatId, old + agent)
     }
 
     @Synchronized
     fun beginAttempt(chatId: String, agentId: String, attempt: Long) {
         val agents = state.value[chatId] ?: return
-        state.value = state.value + (chatId to agents.map {
+        publish(chatId, agents.map {
             if (it.agentId == agentId) it.copy(status = "running", attempt = attempt, tools = emptyList()) else it
         })
     }
@@ -54,7 +66,7 @@ object SubagentProgressStore {
     @Synchronized
     fun retry(chatId: String, agentId: String, attempt: Long, reason: String) {
         val agents = state.value[chatId] ?: return
-        state.value = state.value + (chatId to agents.map {
+        publish(chatId, agents.map {
             if (it.agentId == agentId) it.copy(
                 status = "retrying", attempt = attempt, lastError = reason.take(2000),
                 tools = it.tools.map { tool -> if (!tool.isTerminal) tool.copy(status = "error") else tool }
@@ -65,7 +77,7 @@ object SubagentProgressStore {
     @Synchronized
     fun tool(chatId: String, agentId: String, event: SubagentToolProgress) {
         val agents = state.value[chatId] ?: return
-        state.value = state.value + (chatId to agents.map { agent ->
+        publish(chatId, agents.map { agent ->
             if (agent.agentId != agentId || agent.status != "running") agent else {
                 val existing = agent.tools.indexOfFirst { it.id == event.id }
                 val tools = if (existing < 0) agent.tools + event else
@@ -79,7 +91,7 @@ object SubagentProgressStore {
     fun finish(chatId: String, agentId: String, status: String) {
         require(status in setOf("completed", "failed", "timed_out", "cancelled"))
         val agents = state.value[chatId] ?: return
-        state.value = state.value + (chatId to agents.map {
+        publish(chatId, agents.map {
             if (it.agentId == agentId) it.copy(
                 status = status,
                 tools = it.tools.map { tool ->
@@ -95,5 +107,6 @@ object SubagentProgressStore {
     fun clear(chatId: String) {
         rounds.remove(chatId)
         state.value = state.value - chatId
+        conversationState.value = conversationState.value - chatId
     }
 }

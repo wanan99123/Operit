@@ -1641,6 +1641,7 @@ class MessageCoordinationDelegate(
         groupParticipantNamesText: String?
     ) {
         AppLogger.d(TAG, "接收到Token超限信号，开始执行总结并继续...")
+        if (summaryJob?.isActive == true) return
         summaryJob = coroutineScope.launch {
             summarizeHistory(
                 autoContinue = true,
@@ -1821,12 +1822,13 @@ class MessageCoordinationDelegate(
                     return@launch
                 }
 
-                chatHistoryDelegate.addSummaryMessage(
+                val inserted = chatHistoryDelegate.addSummaryMessage(
                     summaryMessage = summaryMessage,
                     beforeTimestamp = beforeTimestamp,
                     afterTimestamp = afterTimestamp,
                     chatIdOverride = originalChatId,
                 )
+                if (!inserted) return@launch
 
                 refreshStableContextWindow(
                     chatId = originalChatId,
@@ -1940,22 +1942,50 @@ class MessageCoordinationDelegate(
                 )
 
             if (summaryMessage != null) {
-                chatHistoryDelegate.addSummaryMessage(
+                val inserted = chatHistoryDelegate.addSummaryMessage(
                     summaryMessage = summaryMessage,
                     beforeTimestamp = beforeTimestamp,
                     afterTimestamp = afterTimestamp,
                     chatIdOverride = currentChatId,
                 )
 
-                refreshStableContextWindow(
+                if (!inserted) {
+                    uiStateDelegate.showErrorMessage(context.getString(R.string.chat_summary_not_inserted))
+                    return false
+                }
+                val phase = currentChatId?.let {
+                    com.ai.assistance.operit.data.stats.PlanModelStageStore.read(it)
+                }
+                val phaseTarget = if (phase != null) {
+                    val mappings = FunctionalConfigManager(context).functionConfigMappingWithIndexFlow.first()
+                    com.ai.assistance.operit.data.preferences.PlanModelRouting.resolve(phase, mappings)
+                } else null
+                val contextConfigId = if (phaseTarget != null) phaseTarget.configId else effectiveChatModelConfigIdOverride
+                val contextModelIndex = if (phaseTarget != null) phaseTarget.modelIndex else effectiveChatModelIndexOverride
+                val refreshedWindow = refreshStableContextWindow(
                     chatId = currentChatId,
                     roleCardId = roleCardIdOverride,
                     groupOrchestrationMode = isGroupOrchestrationTurn,
                     groupParticipantNamesText = groupParticipantNamesText,
-                    chatModelConfigIdOverride = effectiveChatModelConfigIdOverride,
-                    chatModelIndexOverride = effectiveChatModelIndexOverride,
+                    chatModelConfigIdOverride = contextConfigId,
+                    chatModelIndexOverride = contextModelIndex,
                     memorySpaceIdOverride = effectiveMemorySpaceIdOverride
                 )
+                if (autoContinue) {
+                    checkNotNull(refreshedWindow) { "Cannot validate the context window after summarization" }
+                    val settings = resolveChatContextSettingsForRequest(contextConfigId)
+                    val windowLimit = com.ai.assistance.operit.core.chat.summaryContextWindowTokens(
+                        settings.baseContextLength, settings.maxContextLength, settings.enableMaxContextMode,
+                    )
+                    // Recursive compression cannot make progress when the rebuilt request is still over its boundary.
+                    if (!com.ai.assistance.operit.core.chat.canContinueAfterSummary(
+                            refreshedWindow, windowLimit, settings.summaryTokenThreshold.toDouble(),
+                        )) {
+                        AppLogger.w(TAG, "Summary persisted but request remains above threshold: chatId=$currentChatId, tokens=$refreshedWindow, limit=$windowLimit")
+                        uiStateDelegate.showErrorMessage(context.getString(R.string.chat_summary_context_still_full))
+                        return false
+                    }
+                }
                 summarySuccess = true
             } else {
                 AppLogger.w(TAG, "总结失败或无需总结")
