@@ -8547,4 +8547,5 @@
     <string name="plan_agent_attempt">Attempt %1$d</string>
     <string name="chat_summary_not_inserted">The summary was not saved. Automatic continuation has stopped.</string>
     <string name="chat_summary_context_still_full">The summarized context still exceeds the current model threshold. Repeated compression has stopped. Reduce role or tool prompts and summary length, or increase this model’s context window.</string>
+    <string name="plan_agent_tool_count">Tool calls · %1$d</string>
 </resources>

@@ -369,6 +369,9 @@ class EnhancedAIService private constructor(
         var disableWarning: Boolean = false,
         var maxToolCalls: Int? = null,
         var onChildToolEvent: (suspend (ToolInvocation, String, ToolResult?) -> Unit)? = null,
+        var onChildHistoryCheckpoint: ((List<PromptTurn>) -> Unit)? = null,
+        var onChildToolBatchStart: ((List<PromptTurn>, List<ToolInvocation>) -> Unit)? = null,
+        var onChildToolBatchCommitted: ((List<PromptTurn>) -> Unit)? = null,
     )
 
     // MultiServiceManager 管理不同功能的 AIService 实例
@@ -465,6 +468,9 @@ class EnhancedAIService private constructor(
         val routingProxySenderName: String? = null,
         val toolCallBudget: ToolCallBudget = ToolCallBudget(null),
         val onChildToolEvent: (suspend (ToolInvocation, String, ToolResult?) -> Unit)? = null,
+        val onChildHistoryCheckpoint: ((List<PromptTurn>) -> Unit)? = null,
+        val onChildToolBatchStart: ((List<PromptTurn>, List<ToolInvocation>) -> Unit)? = null,
+        val onChildToolBatchCommitted: ((List<PromptTurn>) -> Unit)? = null,
         val workspacePath: String? = null,
         val workspaceEnv: String? = null,
     )
@@ -1058,6 +1064,9 @@ class EnhancedAIService private constructor(
                     delegatedModelRouting = isSubTask,
                     toolCallBudget = ToolCallBudget(options.maxToolCalls),
                     onChildToolEvent = options.onChildToolEvent,
+                    onChildHistoryCheckpoint = options.onChildHistoryCheckpoint,
+                    onChildToolBatchStart = options.onChildToolBatchStart,
+                    onChildToolBatchCommitted = options.onChildToolBatchCommitted,
                     workspacePath = options.workspacePath,
                     workspaceEnv = options.workspaceEnv,
                 )
@@ -1114,6 +1123,7 @@ class EnhancedAIService private constructor(
                     // 关键修复：用准备好的历史记录（包含了系统提示）去同步更新内部的 conversationHistory 状态
                     execContext.conversationHistory.clear()
                     execContext.conversationHistory.addAll(preparedHistory)
+                    execContext.onChildHistoryCheckpoint?.invoke(execContext.conversationHistory.toList())
 
                     // Update UI state to connecting
                     if (!isSubTask) {
@@ -1202,6 +1212,7 @@ class EnhancedAIService private constructor(
                         }
                     execContext.conversationHistory.clear()
                     execContext.conversationHistory.addAll(requestHistory)
+                    execContext.onChildHistoryCheckpoint?.invoke(execContext.conversationHistory.toList())
                     estimatePreparedRequestWindow(
                         serviceForFunction = serviceForFunction,
                         preparedHistory = requestHistory,
@@ -1412,6 +1423,7 @@ class EnhancedAIService private constructor(
                         )
                     }
                 } finally {
+                    execContext.onChildHistoryCheckpoint?.invoke(execContext.conversationHistory.toList())
                     unregisterExecutionContext(execContext)
                     withContext(NonCancellable) {
                         releaseModelExecutionSnapshot(execContext)
@@ -2196,6 +2208,8 @@ class EnhancedAIService private constructor(
         disableWarning: Boolean = false
     ) {
         val startTime = messageTimingNow()
+        // Capture even an unstarted batch rejected by the per-attempt budget.
+        context.onChildToolBatchStart?.invoke(context.conversationHistory.toList(), toolInvocations)
         if (!context.toolCallBudget.reserve(toolInvocations.size)) {
             delegatedFailure = "Subagent tool-call budget exhausted before this batch"
             finalizeAssistantResponse(context, context.roundManager.getDisplayContent(), false,
@@ -2374,6 +2388,8 @@ class EnhancedAIService private constructor(
             conversationService.normalizeConversationHistoryForModel(context.conversationHistory)
         context.conversationHistory.clear()
         context.conversationHistory.addAll(normalizedChatHistory)
+        // Commit before another model request; interruption must not replay these results.
+        context.onChildToolBatchCommitted?.invoke(context.conversationHistory.toList())
 
         // Get current conversation history is now just the normalized context history
         val currentChatHistory = context.conversationHistory

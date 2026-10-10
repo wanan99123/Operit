@@ -109,9 +109,7 @@ private fun SubagentConversationRow(agent: SubagentProgress) {
         }
         Column(Modifier.padding(start = 22.dp)) {
             Text(
-                text = statusText + if (agent.attempt > 1L || status == SubagentConversationStatus.RETRYING) {
-                    " · " + stringResource(R.string.plan_agent_attempt, agent.attempt)
-                } else "",
+                text = stringResource(R.string.plan_agent_tool_count, agent.toolCallCount),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -61,24 +61,19 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
             return@flow
         }
         val roundId = batchRoundId ?: com.ai.assistance.operit.data.stats.SubagentProgressStore.beginRound(parentChatId)
-        var previousAttemptSummary: String? = null
+        val continuation = SubagentContinuation()
         com.ai.assistance.operit.data.stats.SubagentProgressStore.start(parentChatId,
             com.ai.assistance.operit.data.stats.SubagentProgress(id, request.profile.wireName, request.description), roundId)
         try {
             val result = SubagentRetryRunner.run(
                 onFailure = { attempt, error ->
-                    AppLogger.e(TAG, "Subagent attempt $attempt failed; retrying: $id", error)
                     com.ai.assistance.operit.data.stats.SubagentProgressStore.retry(
                         parentChatId, id, attempt, error.message ?: error.javaClass.simpleName
                     )
-                    emit(ToolResult(tool.name, true, StringResultData(
-                        JSONObject().put("agentId", id).put("status", "retrying")
-                            .put("attempt", attempt).put("error", error.message ?: error.javaClass.simpleName).toString()
-                    )))
                 },
             ) { attempt, previousError ->
                 com.ai.assistance.operit.data.stats.SubagentProgressStore.beginAttempt(parentChatId, id, attempt)
-                val childToolIds = java.util.IdentityHashMap<com.ai.assistance.operit.data.model.ToolInvocation, String>()
+                val childToolIds = mutableMapOf<Pair<String, IntRange>, String>()
                 try {
                     val mapping = FunctionalConfigManager(appContext)
                         .getConfigMappingForFunction(FunctionType.SUBAGENT)
@@ -88,7 +83,7 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
                     // Read the dedicated mapping once so context budgeting and execution use the same model.
                     val child = EnhancedAIService.createSubagentInstance(appContext, request.profile)
                     service = child
-                    emit(ToolResult(tool.name, true, StringResultData(
+                    if (attempt == 1L) emit(ToolResult(tool.name, true, StringResultData(
                         JSONObject().put("agentId", id).put("agentType", request.profile.wireName)
                             .put("description", request.description).put("status", "running")
                             .put("message", appContext.getString(R.string.chat_subagent_running)).toString()
@@ -100,19 +95,23 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
                         require(config.summaryTokenThreshold.toDouble() > 0.0 && config.summaryTokenThreshold.toDouble() <= 1.0) {
                             "Invalid subagent context threshold"
                         }
+                        val resumeHistory = continuation.snapshotForResume()
                         val prompt = buildString {
-                            appendLine("Complete this delegated task and return a concise result to the parent agent:")
-                            appendLine(request.prompt)
+                            if (resumeHistory.isEmpty()) {
+                                appendLine("Complete this delegated task and return a concise result to the parent agent:")
+                                appendLine(request.prompt)
+                            } else {
+                                appendLine("Continue the SAME delegated task from recorded history and completed tool results. Do not restart or repeat completed operations.")
+                            }
                             if (previousError != null) {
-                                appendLine("Retry attempt $attempt. Previous failure: ${previousError.take(2000)}")
-                                appendLine("Inspect existing workspace state and verify prior outputs before changing anything. Continue unfinished work; do not repeat completed or irreversible actions. Do not claim success unless verified.")
-                                previousAttemptSummary?.let { appendLine("Previous attempt summary: $it") }
+                                appendLine("Execution was interrupted: ${previousError.take(2000)}")
+                                appendLine("Verify tools marked outcome unknown before further action. Never blindly replay an interrupted write, upload, submit or other irreversible action. If its outcome cannot be verified, report the blocker.")
                             }
                             if (request.profile == SubagentProfile.EXPLORE) {
                                 appendLine("READ-ONLY MODE: search and read existing files only. No shell, packages, changes or downloads.")
                                 appendLine("Allowed tools: ${SubagentPolicy.exploreTools.joinToString()}.")
                             }
-                            appendLine("Do not delegate again. Keep tool calls within ${request.maxToolCalls}.")
+                            appendLine("Do not delegate again. This attempt has a tool-call limit of ${request.maxToolCalls}; task-wide tool counts remain cumulative across attempts.")
                             appendLine("Do not ask the user questions. If blocked, state the blocker and stop.")
                             appendLine("Return findings and verification, not hidden reasoning or raw tool markup.")
                         }
@@ -121,7 +120,7 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
                             maxTokens = maxContextTokens,
                             tokenUsageThreshold = config.summaryTokenThreshold.toDouble(),
                             chatId = "subagent:$id",
-                            chatHistory = emptyList(),
+                            chatHistory = resumeHistory,
                             workspacePath = parent.workspacePath,
                             workspaceEnv = parent.workspaceEnv,
                             functionType = FunctionType.CHAT,
@@ -134,10 +133,20 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
                             chatModelIndexOverride = modelIndex,
                             memorySpaceIdOverride = parent.memorySpaceId,
                             maxToolCalls = request.maxToolCalls,
-                            onChildToolEvent = { invocation, status, _ ->
-                                if (status == "started") toolCalls.incrementAndGet()
+                            onChildHistoryCheckpoint = continuation::checkpoint,
+                            onChildToolBatchStart = { turns, invocations ->
+                                // Identical text in a later model round is a new invocation.
+                                synchronized(childToolIds) { childToolIds.clear() }
+                                continuation.beginBatch(turns, invocations)
+                            },
+                            onChildToolBatchCommitted = continuation::commitBatch,
+                            onChildToolEvent = { invocation, status, result ->
+                                continuation.toolEvent(invocation, status, result)
                                 val callId = synchronized(childToolIds) {
-                                    childToolIds.getOrPut(invocation) { "tool_subagent_${id}_${UUID.randomUUID()}" }
+                                    childToolIds.getOrPut(invocation.rawText to invocation.responseLocation) {
+                                        toolCalls.incrementAndGet()
+                                        "tool_subagent_${id}_${UUID.randomUUID()}"
+                                    }
                                 }
                                 val name = if (invocation.tool.name == "package_proxy" || invocation.tool.name == "proxy") {
                                     invocation.tool.parameters.firstOrNull { it.name == "tool_name" }?.value.orEmpty()
@@ -163,17 +172,9 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
                     // Every attempt owns a fresh child service and finite budget. Close it before
                     // retrying, even when its model stream fails or the parent is cancelled.
                     withContext(NonCancellable) {
-                        try {
-                            service?.getSubagentFinalReply()?.let {
-                                previousAttemptSummary = ChatUtils.removeThinkingContent(it)
-                                    .replace(ChatMarkupRegex.statusTag, "")
-                                    .replace(ChatMarkupRegex.statusSelfClosingTag, "").trim().take(8_000)
-                            }
-                        } finally {
-                            val attemptService = service
-                            service = null
-                            attemptService?.closeSubagentInstance()
-                        }
+                        val attemptService = service
+                        service = null
+                        attemptService?.closeSubagentInstance()
                     }
                 }
             }

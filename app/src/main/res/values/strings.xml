@@ -8533,4 +8533,5 @@
     <string name="plan_agent_attempt">第 %1$d 次尝试</string>
     <string name="chat_summary_not_inserted">摘要未写入对话，已停止自动续聊。</string>
     <string name="chat_summary_context_still_full">压缩后上下文仍超过当前模型阈值，已停止重复压缩。请缩减角色卡或工具提示词、调低摘要长度，或增大该模型的上下文窗口。</string>
+    <string name="plan_agent_tool_count">工具调用 · %1$d</string>
 </resources>

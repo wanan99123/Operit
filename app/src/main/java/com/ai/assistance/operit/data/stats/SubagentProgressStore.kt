@@ -16,6 +16,8 @@ data class SubagentProgress(
     val tools: List<SubagentToolProgress> = emptyList(),
     val attempt: Long = 1L,
     val lastError: String? = null,
+    /** Task-wide count, independent of retries and the bounded activity list. */
+    val toolCallCount: Long = tools.size.toLong(),
 )
 
 /** Parent-session projection only. Never stores child reasoning or raw tool output. */
@@ -24,6 +26,8 @@ object SubagentProgressStore {
     val sessions: StateFlow<Map<String, List<SubagentProgress>>> = state.asStateFlow()
 
     private val rounds = mutableMapOf<String, String>()
+    // Deduplicate lifecycle events even after their row leaves the 64-item activity window.
+    private val seenToolIds = mutableMapOf<Pair<String, String>, MutableSet<String>>()
     private val conversationState = MutableStateFlow<Map<String, List<SubagentProgress>>>(emptyMap())
     val conversationSessions: StateFlow<Map<String, List<SubagentProgress>>> = conversationState.asStateFlow()
 
@@ -43,6 +47,7 @@ object SubagentProgressStore {
         require(chatId.isNotBlank()) { "A chat id is required" }
         val roundId = java.util.UUID.randomUUID().toString()
         rounds[chatId] = roundId
+        seenToolIds.keys.removeAll { it.first == chatId }
         publish(chatId, emptyList())
         return roundId
     }
@@ -52,6 +57,7 @@ object SubagentProgressStore {
         // A superseded round can still finish cleanup; it must not repopulate the new panel.
         if (roundId != null && rounds[chatId] != roundId) return
         val old = state.value[chatId].orEmpty()
+        seenToolIds[chatId to agent.agentId] = agent.tools.mapTo(mutableSetOf()) { it.id }
         publish(chatId, old + agent)
     }
 
@@ -59,7 +65,7 @@ object SubagentProgressStore {
     fun beginAttempt(chatId: String, agentId: String, attempt: Long) {
         val agents = state.value[chatId] ?: return
         publish(chatId, agents.map {
-            if (it.agentId == agentId) it.copy(status = "running", attempt = attempt, tools = emptyList()) else it
+            if (it.agentId == agentId) it.copy(status = "running", attempt = attempt) else it
         })
     }
 
@@ -79,10 +85,17 @@ object SubagentProgressStore {
         val agents = state.value[chatId] ?: return
         publish(chatId, agents.map { agent ->
             if (agent.agentId != agentId || agent.status != "running") agent else {
+                val isNew = checkNotNull(seenToolIds[chatId to agentId]).add(event.id)
                 val existing = agent.tools.indexOfFirst { it.id == event.id }
+                // Evicted rows must neither inflate the count nor be reinserted by a late event.
+                if (!isNew && existing < 0) return@map agent
                 val tools = if (existing < 0) agent.tools + event else
                     agent.tools.map { if (it.id == event.id) event else it }
-                agent.copy(tools = tools.takeLast(64))
+                agent.copy(
+                    tools = tools.takeLast(64),
+                    toolCallCount = if (!isNew || agent.toolCallCount == Long.MAX_VALUE)
+                        agent.toolCallCount else agent.toolCallCount + 1L,
+                )
             }
         })
     }
@@ -106,6 +119,7 @@ object SubagentProgressStore {
     @Synchronized
     fun clear(chatId: String) {
         rounds.remove(chatId)
+        seenToolIds.keys.removeAll { it.first == chatId }
         state.value = state.value - chatId
         conversationState.value = conversationState.value - chatId
     }
