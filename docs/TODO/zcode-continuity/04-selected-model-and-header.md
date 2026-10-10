@@ -30,6 +30,7 @@ status: implementation-complete-pending-ci
 
 新增 SelectedRequestModelTest、RequestPerformanceStoreTest、HeaderSubagentRoundTest，覆盖聊天选择、子模型隔离、无样本、计时公式、会话隔离、取消、重置、全轮结束与下一轮。新增 HeaderPlanVisibilityTest，覆盖空计划、全部完成、混合状态、重启恢复、新计划替换及会话删除。删除旧路由行为测试，不沿用与新需求冲突的断言。
 
+Android Build 定向测试同步移除已删除的路由测试筛选，加入 SelectedRequestModelTest、PlanStatePersistenceTest、HeaderPlanVisibilityTest 和 HeaderSubagentRoundTest；性能存储测试由既有 *StoreTest 筛选覆盖。Android Tests 继续执行完整 JVM 测试。
 静态检查包括差异空白、资源引用、删除路由引用、初始与工具请求接线检查。编译和 JVM 测试由 GitHub Actions 执行，最终结果以 Actions 为准。设备验收待验证：新聊天首轮选择非默认模型，更新计划并执行工具后模型保持不变；弹窗仅显示概览；两子任务逐个完成后子智能体区域消失，再运行一批时重新出现；重试 2 次以上不显示次数；切换会话与删除会话不串性能数据。计划设备验收待验证：未完成时退出并重启仍显示；全部完成后隐藏；生成新计划后重新显示；删除会话后不恢复旧计划。性能为进程内最新请求统计，不提供跨重启历史性能。
 
 [DONE]

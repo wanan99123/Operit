@@ -213,8 +213,10 @@ jobs:
             --tests 'com.ai.assistance.operit.data.model.FunctionTypeTest' \
             --tests 'com.ai.assistance.operit.data.preferences.FunctionalConfigSubagentMappingTest' \
             --tests 'com.ai.assistance.operit.data.preferences.FunctionalConfigPlanMappingTest' \
-            --tests 'com.ai.assistance.operit.data.preferences.PlanModelRoutingTest' \
-            --tests 'com.ai.assistance.operit.data.preferences.AutomaticPlanModelRoutingTest' \
+            --tests 'com.ai.assistance.operit.data.preferences.SelectedRequestModelTest' \
+            --tests 'com.ai.assistance.operit.data.stats.PlanStatePersistenceTest' \
+            --tests 'com.ai.assistance.operit.ui.features.chat.components.HeaderPlanVisibilityTest' \
+            --tests 'com.ai.assistance.operit.ui.features.chat.components.HeaderSubagentRoundTest' \
             --tests 'com.ai.assistance.operit.api.chat.enhance.ToolCallBudgetTest' \
             --tests 'com.ai.assistance.operit.api.chat.enhance.OrderedToolResultsTest' \
             --tests 'com.ai.assistance.operit.api.chat.enhance.ModelRequestConcurrencyPolicyTest' \
