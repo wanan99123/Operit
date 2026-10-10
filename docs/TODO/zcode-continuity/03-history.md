@@ -40,4 +40,9 @@
 
 已核对工具注册、模型参数声明、runtime 接口、严格加载 DAO 和文案。未执行编译或测试。仍需集成验证大消息分块 hydration、事务内一致性、超限明确失败、取消传播、当前会话归属及子代理实际执行拒绝。
 
+## CI 编译修复
+首次远程编译的 Android Build `38051290474` 和 Android Tests `38051290498` 均在主源码 Kotlin 编译阶段失败，尚未运行测试。错误位于 `ReadSessionContextTool.validateParameters`：`Throwable.message` 是 `String?`，而 `ToolValidationResult.errorMessage` 要求非空 `String`。
+
+失败结果改为保存 `error.toString()`，保留异常类型与原因，不改变参数校验、数据库读取或会话范围。`SessionContextToolRequestTest` 新增执行器校验用例，覆盖合法请求及缺失策略、缺失关键词、非法预算、外部会话参数；通过 mock Context 隔离数据库访问。修复后的编译与测试结果以新一轮 CI 为准。
+
 [DONE]

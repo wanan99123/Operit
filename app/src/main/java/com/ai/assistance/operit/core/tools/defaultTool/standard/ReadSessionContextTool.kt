@@ -101,7 +101,8 @@ class ReadSessionContextTool(context: Context) : ToolExecutor {
         SessionContextToolRequest.parse(tool)
         ToolValidationResult(valid = true)
     } catch (error: IllegalArgumentException) {
-        ToolValidationResult(valid = false, errorMessage = error.message)
+        // Throwable.message is nullable; keep the full non-null exception text required by the result contract.
+        ToolValidationResult(valid = false, errorMessage = error.toString())
     }
 
     private fun failure(tool: AITool, reason: String) =

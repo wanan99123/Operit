@@ -1,14 +1,39 @@
 package com.ai.assistance.operit.core.tools.defaultTool.standard
 
+import android.content.Context
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.model.ToolParameter
 import org.junit.Assert.*
 import org.junit.Test
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 
 class SessionContextToolRequestTest {
     private fun tool(vararg parameters: Pair<String, String>) = AITool("read_session_context",
         parameters.map { ToolParameter(it.first, it.second) })
+
+    @Test fun validationReturnsSuccessOrExplicitFailureWithoutDatabaseAccess() {
+        val context = mock<Context>()
+        whenever(context.applicationContext).thenReturn(context)
+        val executor = ReadSessionContextTool(context)
+        val valid = executor.validateParameters(tool("strategy" to "handoff"))
+        assertTrue(valid.valid)
+        assertEquals("", valid.errorMessage)
+
+        val invalidRequests = listOf(
+            tool() to "strategy must be relevant or handoff",
+            tool("strategy" to "relevant") to "relevant requires a nonblank query",
+            tool("strategy" to "handoff", "budget_chars" to "oops") to "budget_chars must be an integer",
+            tool("strategy" to "handoff", "chat_id" to "other") to "chat selection is not allowed"
+        )
+        for ((request, reason) in invalidRequests) {
+            val result = executor.validateParameters(request)
+            assertFalse(result.valid)
+            assertTrue(result.errorMessage.startsWith("java.lang.IllegalArgumentException:"))
+            assertTrue(result.errorMessage.contains(reason))
+        }
+    }
 
     @Test fun defaultsOnlyApplyToOmittedParameters() {
         assertEquals(8000, SessionContextToolRequest.parse(tool("strategy" to "handoff")).budgetChars)
