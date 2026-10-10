@@ -67,7 +67,6 @@ import com.ai.assistance.operit.ui.features.chat.components.style.input.common.r
 import com.ai.assistance.operit.ui.features.chat.components.SimpleLinearProgressIndicator
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.PendingMessageQueuePanel
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.PendingQueueMessageItem
-import com.ai.assistance.operit.ui.features.chat.components.SubagentInputStatus
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
 import com.ai.assistance.operit.ui.floating.FloatingMode
 import com.ai.assistance.operit.ui.theme.isLiquidGlassSupported
@@ -120,7 +119,6 @@ fun ClassicChatInputSection(
     onEditPendingQueueMessage: (Long) -> Unit = {},
     onSendPendingQueueMessage: (Long) -> Unit = {}
 ) {
-    val currentChatId by actualViewModel.currentChatId.collectAsState()
     val showTokenLimitDialog = remember { mutableStateOf(false) }
     val showFullscreenInput = remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -302,7 +300,6 @@ fun ClassicChatInputSection(
                 ),
     ) {
         Column {
-            SubagentInputStatus(chatId = currentChatId)
             // Reply preview section
             replyToMessage?.let { message ->
                 Surface(

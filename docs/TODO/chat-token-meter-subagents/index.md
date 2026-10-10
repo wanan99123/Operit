@@ -40,4 +40,6 @@ Android 1.12.2 已有 Token 用量数据库、供应商 usage 归一化、聊天
 
 [子任务详情、对话进度收尾与重复压缩](05-progress-details-and-summary-lifecycle.md) 记录 `feat/plan-steps-and-subagents` 的状态圈、两种输入布局详情、运行态投影与压缩生命周期修正。
 
-目前阶段：本次增量源码与回归测试已编写，尚未完成云端编译、测试及真机验收。
+[移除底部入口与工具标题对齐](06-input-removal-and-header-alignment.md) 记录最新 UI 调整，替代上一增量的输入框详情入口；状态圈左缘对齐工具展开箭头右侧的数量文字。
+
+验证状态：`56c7494` 云端构建成功，完整 Debug JVM 测试有 5 个失败，根因待定位；最新 UI 调整的云端验证与真机验收待完成。

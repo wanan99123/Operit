@@ -8545,10 +8545,6 @@
     <string name="plan_models_default_notice">Plan generation, implementation and subagents have separate model selections. Unset selections and Use Default Model select the first model in the default configuration.</string>
     <string name="plan_agent_retrying">Failed, retrying</string>
     <string name="plan_agent_attempt">Attempt %1$d</string>
-    <string name="chat_subagent_details_count">Subagents · %1$d · View details</string>
-    <string name="chat_subagent_task_name">Task: %1$s</string>
-    <string name="chat_subagent_retry_count">Retries: %1$d</string>
-    <string name="chat_subagent_current_tool">Current tool: %1$s</string>
     <string name="chat_summary_not_inserted">The summary was not saved. Automatic continuation has stopped.</string>
     <string name="chat_summary_context_still_full">The summarized context still exceeds the current model threshold. Repeated compression has stopped. Reduce role or tool prompts and summary length, or increase this model’s context window.</string>
 </resources>
