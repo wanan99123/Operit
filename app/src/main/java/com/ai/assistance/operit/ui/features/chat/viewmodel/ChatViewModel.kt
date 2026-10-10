@@ -751,6 +751,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 com.ai.assistance.operit.data.stats.PlanStepStore.clear(chatId)
                 com.ai.assistance.operit.data.stats.ContextDiagnosticsStore.clear(chatId)
                 com.ai.assistance.operit.data.stats.SubagentProgressStore.clear(chatId)
+                com.ai.assistance.operit.data.stats.RequestPerformanceStore.clear(chatId)
             } else {
                 uiStateDelegate.showToast(context.getString(R.string.chat_locked_cannot_delete))
             }
@@ -765,6 +766,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     com.ai.assistance.operit.data.stats.PlanStepStore.clear(chatId)
                     com.ai.assistance.operit.data.stats.ContextDiagnosticsStore.clear(chatId)
                     com.ai.assistance.operit.data.stats.SubagentProgressStore.clear(chatId)
+                    com.ai.assistance.operit.data.stats.RequestPerformanceStore.clear(chatId)
                 }
                 uiStateDelegate.showToast(context.getString(R.string.chat_cleared))
             } else {
@@ -1482,7 +1484,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         hideMentionSuggestionPanel()
     }
 
-    /** Phase switching is automatic inside the model/tool loop, not a composer action. */
+    /** The model selected in the composer remains active across planning and tool execution. */
     fun sendUserMessage(promptFunctionType: PromptFunctionType = PromptFunctionType.CHAT) {
         hideMentionSuggestionPanel()
         messageCoordinationDelegate.sendUserMessage(

@@ -558,7 +558,6 @@ class MessageCoordinationDelegate(
             cancelPendingAutoContinuation(chatId, restoreIdleIfPendingState = false)
         }
         if (
-            com.ai.assistance.operit.data.stats.PlanModelStageStore.read(chatId) == null &&
             turnOptions.persistTurn &&
             enableGroupOrchestration &&
             shouldRunGroupOrchestration(
@@ -639,17 +638,9 @@ class MessageCoordinationDelegate(
                         else FunctionConfigMapping(id, (index ?: 0).coerceAtLeast(0))
                     }
                 }
-                // Initial user request uses the configured default. Later stage requests ignore
-                // composer/role-card model bindings; ordinary conversation keeps those bindings.
-                val firstRequest = !isAutoContinuation && chatModelConfigIdOverride.isNullOrBlank() &&
-                    runBlocking { chatHistoryDelegate.getRuntimeChatHistory(chatId) }.none { it.sender == "user" }
-                val stage = com.ai.assistance.operit.data.stats.PlanModelStageStore.read(chatId)
-                // Keep the ordinary target available when the agent returns to chat. The model
-                // loop applies the live phase binding independently before every provider request.
-                val target = if (firstRequest && stage == null) FunctionConfigMapping() else ordinaryTarget
-                val resolvedChatModelConfigIdOverride = target.configId
-                val resolvedChatModelIndexOverride = target.modelIndex
-                AppLogger.d(TAG, "Request model route: chatId=$chatId, firstRequest=$firstRequest, stage=$stage, configId=${target.configId}, modelIndex=${target.modelIndex}")
+                // Every turn, including the first, honors the selected chat/role-card model.
+                val resolvedChatModelConfigIdOverride = ordinaryTarget.configId
+                val resolvedChatModelIndexOverride = ordinaryTarget.modelIndex
                 val resolvedMemorySpaceIdOverride =
                     when {
                         !memorySpaceIdOverride.isNullOrBlank() -> memorySpaceIdOverride
@@ -676,14 +667,7 @@ class MessageCoordinationDelegate(
         val resolvedMemorySpaceIdOverride = resolvedOverrides.third
         val chatContextSettings =
             runBlocking {
-                // Pre-send summary checks must use the active phase model too; keeping the
-                // ordinary override here would summarize against the wrong context window.
-                val phase = com.ai.assistance.operit.data.stats.PlanModelStageStore.read(chatId)
-                val contextConfigId = if (promptFunctionType == PromptFunctionType.CHAT && phase != null) {
-                    val mappings = FunctionalConfigManager(context).functionConfigMappingWithIndexFlow.first()
-                    com.ai.assistance.operit.data.preferences.PlanModelRouting.resolve(phase, mappings).configId
-                } else resolvedChatModelConfigIdOverride
-                resolveChatContextSettingsForRequest(contextConfigId)
+                resolveChatContextSettingsForRequest(resolvedChatModelConfigIdOverride)
             }
 
         if (!isAutoContinuation) {
@@ -1977,15 +1961,8 @@ class MessageCoordinationDelegate(
                 if (currentChatId != null) {
                     recordCompressionDiagnostics(currentChatId, compressionReason, currentMessages, summaryMessage)
                 }
-                val phase = currentChatId?.let {
-                    com.ai.assistance.operit.data.stats.PlanModelStageStore.read(it)
-                }
-                val phaseTarget = if (phase != null) {
-                    val mappings = FunctionalConfigManager(context).functionConfigMappingWithIndexFlow.first()
-                    com.ai.assistance.operit.data.preferences.PlanModelRouting.resolve(phase, mappings)
-                } else null
-                val contextConfigId = if (phaseTarget != null) phaseTarget.configId else effectiveChatModelConfigIdOverride
-                val contextModelIndex = if (phaseTarget != null) phaseTarget.modelIndex else effectiveChatModelIndexOverride
+                val contextConfigId = effectiveChatModelConfigIdOverride
+                val contextModelIndex = effectiveChatModelIndexOverride
                 val refreshedWindow = refreshStableContextWindow(
                     chatId = currentChatId,
                     roleCardId = roleCardIdOverride,

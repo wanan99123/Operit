@@ -20,6 +20,7 @@ import com.ai.assistance.operit.data.stats.ContextTokenCount
 import com.ai.assistance.operit.data.stats.ContextTokenSource
 import com.ai.assistance.operit.data.stats.PlanStepStore
 import com.ai.assistance.operit.core.chat.logMessageTiming
+import com.ai.assistance.operit.data.stats.RequestPerformanceStore
 import com.ai.assistance.operit.core.chat.messageTimingNow
 import com.ai.assistance.operit.core.chat.hooks.PromptHookContext
 import com.ai.assistance.operit.core.chat.hooks.PromptHookRegistry
@@ -464,8 +465,6 @@ class EnhancedAIService private constructor(
         val conversationHistory: MutableList<PromptTurn>,
         val eventChannel: MutableSharedStream<TextStreamEvent>,
         var modelExecutionSnapshot: ModelExecutionSnapshot? = null,
-        val routingChatId: String? = null,
-        val automaticPlanRouting: Boolean = false,
         val delegatedModelRouting: Boolean = false,
         var modelRoutingTarget: com.ai.assistance.operit.data.preferences.FunctionConfigMapping? = null,
         var modelPromptNeedsRefresh: Boolean = false,
@@ -481,11 +480,6 @@ class EnhancedAIService private constructor(
         val workspaceEnv: String? = null,
     )
 
-    private val lastRoutedTargets = ConcurrentHashMap<String, com.ai.assistance.operit.data.preferences.FunctionConfigMapping>()
-    suspend fun getLastRoutedDisplayProviderAndModel(chatId: String): Pair<String, String>? {
-        val target = lastRoutedTargets[chatId] ?: return null
-        return getDisplayProviderAndModelForFunction(FunctionType.CHAT, target.configId, target.modelIndex)
-    }
     private val activeExecutionContexts = ConcurrentHashMap<Int, MessageExecutionContext>()
     private val nextExecutionContextId = AtomicInteger(0)
 
@@ -523,16 +517,10 @@ class EnhancedAIService private constructor(
         ensureInitialized()
         val mappings = com.ai.assistance.operit.data.preferences.FunctionalConfigManager(this.context)
             .functionConfigMappingWithIndexFlow.first()
-        val ordinaryTarget = if (context.delegatedModelRouting) {
-            mappings[FunctionType.SUBAGENT] ?: com.ai.assistance.operit.data.preferences.FunctionConfigMapping()
-        } else chatModelConfigIdOverride?.takeIf { functionType == FunctionType.CHAT && it.isNotBlank() }?.let {
-            com.ai.assistance.operit.data.preferences.FunctionConfigMapping(it, (chatModelIndexOverride ?: 0).coerceAtLeast(0))
-        } ?: (mappings[functionType] ?: com.ai.assistance.operit.data.preferences.FunctionConfigMapping())
-        val stage = if (context.automaticPlanRouting) context.routingChatId?.let {
-            com.ai.assistance.operit.data.stats.PlanModelStageStore.read(it)
-        } else null
-        val target = com.ai.assistance.operit.data.preferences.AutomaticPlanModelRouting.resolve(
-            stage, mappings, ordinaryTarget, !context.automaticPlanRouting
+        // The composer selection owns every parent request, including tool continuations.
+        val target = com.ai.assistance.operit.data.preferences.SelectedRequestModel.resolve(
+            functionType, mappings, chatModelConfigIdOverride, chatModelIndexOverride,
+            context.delegatedModelRouting,
         )
         // Acquire at every boundary: an unchanged mapping may still have edited configuration or
         // model parameters. The manager retires stale entries without cancelling other leases.
@@ -549,8 +537,6 @@ class EnhancedAIService private constructor(
             context.modelPromptNeedsRefresh = true
         }
         context.modelRoutingTarget = target
-        if (context.automaticPlanRouting) context.routingChatId?.let { lastRoutedTargets[it] = target }
-        AppLogger.d(TAG, "Automatic model route: chatId=${context.routingChatId}, stage=$stage, configId=${target.configId}, modelIndex=${target.modelIndex}")
         val snapshot = ModelExecutionSnapshot(lease)
         AppLogger.d(TAG, "Model execution snapshot: configId=${lease.modelConfig.id}, index=${lease.modelIndex}, providerModel=${lease.service.providerModel}")
         context.modelExecutionSnapshot = snapshot
@@ -1081,11 +1067,9 @@ class EnhancedAIService private constructor(
                     executionId = nextExecutionContextId.incrementAndGet(),
                     conversationHistory = chatHistory.toMutableList(),
                     eventChannel = eventChannel,
-                    routingChatId = chatId,
                     routingSystemPromptTemplate = customSystemPromptTemplate,
                     routingGroupParticipantNamesText = groupParticipantNamesText,
                     routingProxySenderName = proxySenderName,
-                    automaticPlanRouting = !isSubTask && functionType == FunctionType.CHAT,
                     delegatedModelRouting = isSubTask,
                     toolCallBudget = ToolCallBudget(options.maxToolCalls),
                     onChildToolEvent = options.onChildToolEvent,
@@ -1095,7 +1079,6 @@ class EnhancedAIService private constructor(
                     workspacePath = options.workspacePath,
                     workspaceEnv = options.workspaceEnv,
                 )
-            if (execContext.automaticPlanRouting) chatId?.let { lastRoutedTargets.remove(it) }
             registerExecutionContext(execContext)
             var hadFatalError = false
             var providerStreamCollectionStarted = false
@@ -1258,6 +1241,7 @@ class EnhancedAIService private constructor(
                     // 使用新的Stream API
                     AppLogger.d(TAG, "sendMessage请求前准备耗时: ${tAfterGetTools - startTime}ms, 流式输出: $stream")
                     val requestStartTime = messageTimingNow()
+                    if (!isSubTask && chatId != null) RequestPerformanceStore.begin(chatId, requestStartTime)
                     val responseStream =
                             serviceForFunction.sendMessage(
                                     context = this@EnhancedAIService.context,
@@ -1271,6 +1255,7 @@ class EnhancedAIService private constructor(
                                         currentRequestOutputTokenCount = output.coerceAtLeast(0)
                                         currentRequestCachedInputTokenCount = cachedInput.coerceAtLeast(0)
                                         _perRequestTokenCounts.value = Pair(input, output)
+                                    if (!isSubTask && chatId != null) RequestPerformanceStore.tokens(chatId, output, messageTimingNow())
                                     },
                                      onNonFatalError = onNonFatalError,
                             )
@@ -1319,6 +1304,7 @@ class EnhancedAIService private constructor(
  
                         try {
                             responseStream.collect { content ->
+                                if (!isSubTask && chatId != null && content.isNotEmpty()) RequestPerformanceStore.firstContent(chatId, messageTimingNow())
                                 // 第一次收到响应，更新状态
                                 if (isFirstChunk) {
                                     if (!isSubTask) {
@@ -1368,6 +1354,7 @@ class EnhancedAIService private constructor(
                     val inputTokens = serviceForFunction.inputTokenCount
                     val cachedInputTokens = serviceForFunction.cachedInputTokenCount
                     val outputTokens = serviceForFunction.outputTokenCount
+                if (!isSubTask && chatId != null) RequestPerformanceStore.complete(chatId, outputTokens, messageTimingNow())
                     accumulatedInputTokenCount += inputTokens
                     accumulatedOutputTokenCount += outputTokens
                     accumulatedCachedInputTokenCount =
@@ -1459,6 +1446,7 @@ class EnhancedAIService private constructor(
                     }
                 } finally {
                     execContext.onChildHistoryCheckpoint?.invoke(execContext.conversationHistory.toList())
+                    if (!isSubTask && chatId != null) RequestPerformanceStore.stop(chatId)
                     unregisterExecutionContext(execContext)
                     withContext(NonCancellable) {
                         releaseModelExecutionSnapshot(execContext)
@@ -2503,23 +2491,12 @@ class EnhancedAIService private constructor(
             publishEstimate = true
         )
 
-        // Context limits follow the actual phase model, not the initial request's model.
-        val phaseActive = context.automaticPlanRouting && context.routingChatId?.let {
-            com.ai.assistance.operit.data.stats.PlanModelStageStore.read(it)
-        } != null
-        val requestMaxTokens = if (phaseActive) com.ai.assistance.operit.core.chat.summaryContextWindowTokens(
-            modelSnapshot.config.contextLength,
-            modelSnapshot.config.maxContextLength,
-            modelSnapshot.config.enableMaxContextMode,
-        ) else maxTokens
-        // Phase routing must not re-enable summarization when the parent disabled it.
-        val requestTokenThreshold = if (phaseActive && onTokenLimitExceeded != null) {
-            modelSnapshot.config.summaryTokenThreshold.toDouble()
-        } else tokenUsageThreshold
+        val requestMaxTokens = maxTokens
+        val requestTokenThreshold = tokenUsageThreshold
         if (requestMaxTokens > 0) {
             val usageRatio = currentTokens.toDouble() / requestMaxTokens.toDouble()
             if (usageRatio >= requestTokenThreshold) {
-                AppLogger.w(TAG, "Token usage ($usageRatio) exceeds phase threshold ($requestTokenThreshold). Triggering summary.")
+                AppLogger.w(TAG, "Token usage ($usageRatio) exceeds request threshold ($requestTokenThreshold). Triggering summary.")
                 onTokenLimitExceeded?.invoke()
                 context.isConversationActive.set(false)
                 if (!isSubTask) stopAiService(characterName, avatarUri)
@@ -2542,6 +2519,7 @@ class EnhancedAIService private constructor(
             try {
                 // 发送消息并获取响应流
                 val aiStartTime = messageTimingNow()
+                if (!isSubTask && chatId != null) RequestPerformanceStore.begin(chatId, aiStartTime)
                 val responseStream =
                         serviceForFunction.sendMessage(
                                 context = this@EnhancedAIService.context,
@@ -2555,6 +2533,7 @@ class EnhancedAIService private constructor(
                                     currentRequestOutputTokenCount = output.coerceAtLeast(0)
                                     currentRequestCachedInputTokenCount = cachedInput.coerceAtLeast(0)
                                     _perRequestTokenCounts.value = Pair(input, output)
+                                        if (!isSubTask && chatId != null) RequestPerformanceStore.tokens(chatId, output, messageTimingNow())
                                 },
                                  onNonFatalError = onNonFatalError,
                         )
@@ -2605,6 +2584,7 @@ class EnhancedAIService private constructor(
 
                     try {
                         responseStream.collect { content ->
+                            if (!isSubTask && chatId != null && content.isNotEmpty()) RequestPerformanceStore.firstContent(chatId, messageTimingNow())
                             if (isFirstChunk) {
                                 isFirstChunk = false
                                 logMessageTiming(
@@ -2644,6 +2624,7 @@ class EnhancedAIService private constructor(
                 val inputTokens = serviceForFunction.inputTokenCount
                 val cachedInputTokens = serviceForFunction.cachedInputTokenCount
                 val outputTokens = serviceForFunction.outputTokenCount
+                    if (!isSubTask && chatId != null) RequestPerformanceStore.complete(chatId, outputTokens, messageTimingNow())
                 accumulatedInputTokenCount += inputTokens
                 accumulatedOutputTokenCount += outputTokens
                 accumulatedCachedInputTokenCount =

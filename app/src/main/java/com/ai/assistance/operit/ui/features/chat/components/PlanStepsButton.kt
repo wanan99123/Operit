@@ -55,7 +55,8 @@ fun PlanStepsButton(
 ) {
     var expanded by remember(sessionId) { mutableStateOf(false) }
     val completedCount = steps.count { it.status == PlanStepStatus.COMPLETED }
-    val runningAgents = subagents.count { it.status == "running" || it.status == "retrying" }
+    val visibleAgents = visibleHeaderSubagents(subagents)
+    val runningAgents = visibleAgents.count { it.status == "running" || it.status == "retrying" }
     val activeStep =
         steps.firstOrNull { it.status == PlanStepStatus.IN_PROGRESS }
             ?: steps.firstOrNull { it.status != PlanStepStatus.COMPLETED }
@@ -149,14 +150,14 @@ fun PlanStepsButton(
                     steps.forEach { PlanStepRow(it) }
                 }
             }
-            if (subagents.isNotEmpty()) {
+            if (visibleAgents.isNotEmpty()) {
                 HorizontalDivider()
                 Text(
                     stringResource(R.string.plan_subagents_title),
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                 )
-                subagents.asReversed().forEach { SubagentProgressRow(it) }
+                visibleAgents.asReversed().forEach { SubagentProgressRow(it) }
             }
         }
     }
@@ -188,8 +189,7 @@ private fun SubagentProgressRow(agent: SubagentProgress) {
             color = MaterialTheme.colorScheme.onSurface
         )
         Text(
-            text = "${agent.agentType} · $statusText" + if (agent.attempt > 1L || agent.status == "retrying")
-                " · " + stringResource(R.string.plan_agent_attempt, agent.attempt) else "",
+            text = "${agent.agentType} · $statusText",
             style = MaterialTheme.typography.labelSmall,
             color = statusColor
         )
