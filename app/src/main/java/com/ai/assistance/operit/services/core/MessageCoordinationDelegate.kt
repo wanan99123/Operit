@@ -263,16 +263,17 @@ class MessageCoordinationDelegate(
         }
     }
 
-    /** Keep context-window calculations aligned with the live generation route, without overwriting chat selection. */
+    /**
+     * Live phase routing for context-window math. Null means a non-chat prompt keeps the caller's
+     * own resolution; generation/review intentionally use the planner binding here as well.
+     */
     private suspend fun resolvePhaseRequestTarget(
         chatId: String?,
         configId: String?,
         modelIndex: Int?,
         promptFunctionType: PromptFunctionType,
-    ): FunctionConfigMapping {
-        if (promptFunctionType != PromptFunctionType.CHAT) {
-            return FunctionConfigMapping(configId ?: FunctionalConfigManager.DEFAULT_CONFIG_ID, modelIndex ?: 0)
-        }
+    ): FunctionConfigMapping? {
+        if (promptFunctionType != PromptFunctionType.CHAT) return null
         val mappings = FunctionalConfigManager(context).functionConfigMappingWithIndexFlow.first()
         val stage = chatId?.let { com.ai.assistance.operit.data.stats.PlanModelStageStore.read(it) }
         return com.ai.assistance.operit.data.preferences.SelectedRequestModel.resolve(
@@ -306,6 +307,10 @@ class MessageCoordinationDelegate(
         val requestTarget = resolvePhaseRequestTarget(
             targetChatId, effectiveChatModelConfigIdOverride, effectiveChatModelIndexOverride, effectivePromptFunctionType,
         )
+        val windowConfigId =
+            if (requestTarget == null) effectiveChatModelConfigIdOverride else requestTarget.configId
+        val windowModelIndex =
+            if (requestTarget == null) effectiveChatModelIndexOverride else requestTarget.modelIndex
         val newWindowSize =
             recalculateStableWindowSize(
                 service = service,
@@ -314,8 +319,8 @@ class MessageCoordinationDelegate(
                 promptFunctionType = effectivePromptFunctionType,
                 groupOrchestrationMode = groupOrchestrationMode,
                 groupParticipantNamesText = groupParticipantNamesText,
-                chatModelConfigIdOverride = requestTarget.configId,
-                chatModelIndexOverride = requestTarget.modelIndex,
+                chatModelConfigIdOverride = windowConfigId,
+                chatModelIndexOverride = windowModelIndex,
                 memorySpaceIdOverride = effectiveMemorySpaceIdOverride
             )
         val (inputTokens, outputTokens) = tokenStatsDelegate.getCumulativeTokenCounts(targetChatId)
@@ -691,7 +696,9 @@ class MessageCoordinationDelegate(
                 val requestTarget = resolvePhaseRequestTarget(
                     chatId, resolvedChatModelConfigIdOverride, resolvedChatModelIndexOverride, promptFunctionType,
                 )
-                resolveChatContextSettingsForRequest(requestTarget.configId)
+                val settingsConfigId =
+                    if (requestTarget == null) resolvedChatModelConfigIdOverride else requestTarget.configId
+                resolveChatContextSettingsForRequest(settingsConfigId)
             }
 
         if (!isAutoContinuation) {
@@ -1988,8 +1995,10 @@ class MessageCoordinationDelegate(
                 val requestTarget = resolvePhaseRequestTarget(
                     currentChatId, effectiveChatModelConfigIdOverride, effectiveChatModelIndexOverride, currentPromptFunctionType,
                 )
-                val contextConfigId = requestTarget.configId
-                val contextModelIndex = requestTarget.modelIndex
+                val contextConfigId =
+                    if (requestTarget == null) effectiveChatModelConfigIdOverride else requestTarget.configId
+                val contextModelIndex =
+                    if (requestTarget == null) effectiveChatModelIndexOverride else requestTarget.modelIndex
                 val refreshedWindow = refreshStableContextWindow(
                     chatId = currentChatId,
                     roleCardId = roleCardIdOverride,

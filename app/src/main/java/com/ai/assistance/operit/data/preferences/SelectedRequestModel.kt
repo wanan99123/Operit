@@ -3,7 +3,7 @@ package com.ai.assistance.operit.data.preferences
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.PlanModelStage
 
-/** Only generation/review use the planner; implementation keeps the selected chat model. */
+/** Generation/review use the planner binding; implementation and ordinary chat keep the chat model. */
 internal object SelectedRequestModel {
     fun resolve(
         functionType: FunctionType,
@@ -14,12 +14,13 @@ internal object SelectedRequestModel {
         stage: PlanModelStage? = null,
     ): FunctionConfigMapping {
         if (isSubTask) return mappings[FunctionType.SUBAGENT] ?: FunctionConfigMapping()
-        if (functionType == FunctionType.CHAT &&
-            (stage == PlanModelStage.GENERATION || stage == PlanModelStage.REVIEW)) {
-            return mappings[FunctionType.PLAN_GENERATION] ?: FunctionConfigMapping()
-        }
-        if (functionType == FunctionType.CHAT && !configIdOverride.isNullOrBlank()) {
-            return FunctionConfigMapping(configIdOverride, (modelIndexOverride ?: 0).coerceAtLeast(0))
+        if (functionType == FunctionType.CHAT) {
+            if (stage == PlanModelStage.GENERATION || stage == PlanModelStage.REVIEW) {
+                return mappings[FunctionType.PLAN_GENERATION] ?: FunctionConfigMapping()
+            }
+            if (!configIdOverride.isNullOrBlank()) {
+                return FunctionConfigMapping(configIdOverride, (modelIndexOverride ?: 0).coerceAtLeast(0))
+            }
         }
         return mappings[functionType] ?: FunctionConfigMapping()
     }
