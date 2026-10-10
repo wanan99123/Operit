@@ -22,4 +22,4 @@ The previous native subagent API accepted task/context_text and returned a flat 
 
 Release unit tests and :app:packageRelease run in GitHub Actions. No local Gradle or APK download is required. The application ID remains com.ai.assistance.operit. Without the matching release key, the APK is unsigned and cannot be installed or used for an in-place upgrade.
 
-Implementation is complete; runtime UI and cancellation checks remain pending cloud compilation and device validation.
+Implementation is complete. Release unit tests passed in cloud run 37972771750; packaging was blocked by an obsolete Japanese translation. See [Release lint validation](02-release-lint-validation.md) for the fix and verification record. Packaging after the fix and runtime UI/cancellation checks remain pending.
