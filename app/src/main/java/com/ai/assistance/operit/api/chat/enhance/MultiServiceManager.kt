@@ -20,7 +20,10 @@ import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** 管理多个AIService实例，根据功能类型提供不同的服务配置 */
-class MultiServiceManager(private val context: Context) {
+class MultiServiceManager(
+    private val context: Context,
+    private val requestConcurrencyPolicy: ModelRequestConcurrencyPolicy = ModelRequestConcurrencyPolicy.CONFIGURED,
+) {
     companion object {
         private const val TAG = "MultiServiceManager"
     }
@@ -326,7 +329,8 @@ class MultiServiceManager(private val context: Context) {
         )
 
         val requestLimitPerMinute = config.requestLimitPerMinute.coerceAtLeast(0)
-        val maxConcurrentRequests = config.maxConcurrentRequests.coerceAtLeast(0)
+        // Subagent instances opt out of the shared model concurrency gate. Regular services keep it.
+        val maxConcurrentRequests = requestConcurrencyPolicy.effectiveLimit(config.maxConcurrentRequests)
 
         if (requestLimitPerMinute == 0 && maxConcurrentRequests == 0) {
             return rawService

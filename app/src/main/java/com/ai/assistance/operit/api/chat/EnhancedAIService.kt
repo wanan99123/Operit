@@ -372,7 +372,14 @@ class EnhancedAIService private constructor(
     )
 
     // MultiServiceManager 管理不同功能的 AIService 实例
-    private val multiServiceManager = MultiServiceManager(context)
+    private val multiServiceManager = MultiServiceManager(
+        context,
+        requestConcurrencyPolicy = if (delegatedInstance) {
+            com.ai.assistance.operit.api.chat.enhance.ModelRequestConcurrencyPolicy.UNRESTRICTED
+        } else {
+            com.ai.assistance.operit.api.chat.enhance.ModelRequestConcurrencyPolicy.CONFIGURED
+        },
+    )
 
     private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val initMutex = Mutex()

@@ -658,7 +658,7 @@ object ToolExecutionManager {
         val parallelizableToolNames = setOf(
             "list_files", "read_file", "read_file_part", "read_file_full", "file_exists",
             "find_files", "file_info", "grep_code", "calculate", "ffmpeg_info",
-            "visit_web", "download_file", "run_subagent"
+            "visit_web", "download_file", "run_subagent", "run_subagents"
         )
         val (parallelInvocations, serialInvocations) = injectedInvocations.partition {
             parallelizableToolNames.contains(
@@ -764,7 +764,7 @@ object ToolExecutionManager {
             )
         }
         val lastResult = collectedResults.last()
-        if (displayToolName == "run_subagent") return lastResult
+        if (displayToolName == "run_subagent" || displayToolName == "run_subagents") return lastResult
         val combinedResultString = collectedResults.joinToString("\n") { res ->
             (if (res.success) res.result.toString() else "Step error: ${res.error ?: "Unknown error"}").trim()
         }.trim()

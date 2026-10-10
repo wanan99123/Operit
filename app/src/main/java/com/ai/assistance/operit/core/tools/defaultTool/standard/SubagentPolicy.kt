@@ -13,7 +13,7 @@ enum class SubagentProfile(val wireName: String) {
 /** Enforced before permissions, package activation and execution, not just in the prompt. */
 object SubagentPolicy {
     private val disallowed = setOf(
-        "run_subagent", "subagent_run", "Agent", "Task", "update_plan",
+        "run_subagent", "run_subagents", "subagent_run", "Agent", "Task", "update_plan",
         "EnterPlanMode", "ExitPlanMode", "enter_plan_mode", "exit_plan_mode"
     )
     val exploreTools = setOf(

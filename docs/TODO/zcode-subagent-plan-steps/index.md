@@ -20,6 +20,10 @@ The previous native subagent API accepted task/context_text and returned a flat 
 Subagents now use the independent SUBAGENT functional model mapping. The functional configuration screen exposes its configuration, model selection and connection test. Parent role, permissions and workspace remain inherited; both general-purpose and Explore use the selected child model.
 
 
+## Parallel execution
+
+Multiple independent tasks now use one `run_subagents` call. All child flows start before results are awaited, and only delegated model services ignore the model-config concurrency gate. The single-task API is unchanged. See [Parallel subagent batches](05-parallel-subagent-batches.md) for the protocol, failure handling and deterministic overlap tests.
+
 ## Verification
 
 Release unit tests and :app:packageRelease run in GitHub Actions. No local Gradle or APK download is required. The application ID remains com.ai.assistance.operit. Without the matching release key, the APK is unsigned and cannot be installed or used for an in-place upgrade.

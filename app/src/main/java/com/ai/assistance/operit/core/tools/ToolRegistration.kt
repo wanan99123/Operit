@@ -1739,6 +1739,11 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
         executor = com.ai.assistance.operit.core.tools.defaultTool.standard.StandardSubagentTool(context)
     )
     handler.registerTool(
+        name = "run_subagents",
+        descriptionGenerator = { _ -> s(R.string.chat_subagent_action) },
+        executor = com.ai.assistance.operit.core.tools.defaultTool.standard.StandardSubagentBatchTool(context)
+    )
+    handler.registerTool(
         name = "update_plan",
         descriptionGenerator = { _ -> s(R.string.toolreg_update_plan_desc) },
         executor = com.ai.assistance.operit.core.tools.defaultTool.standard.UpdatePlanTool()

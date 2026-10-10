@@ -7,11 +7,12 @@ import org.junit.Test
 class SubagentPolicyTest {
     @Test fun parentRetainsTools() {
         assertNull(SubagentPolicy.denial("run_subagent", false, null))
+        assertNull(SubagentPolicy.denial("run_subagents", false, null))
         assertNull(SubagentPolicy.denial("update_plan", false, null))
     }
 
     @Test fun childrenCannotDelegateOrModifyParentPlan() {
-        for (name in listOf("run_subagent", "pkg:run_subagent", "Agent", "Task",
+        for (name in listOf("run_subagent", "run_subagents", "pkg:run_subagent", "pkg:run_subagents", "Agent", "Task",
             "update_plan", "EnterPlanMode", "ExitPlanMode")) {
             assertNotNull(SubagentPolicy.denial(name, true, SubagentProfile.GENERAL_PURPOSE))
         }
