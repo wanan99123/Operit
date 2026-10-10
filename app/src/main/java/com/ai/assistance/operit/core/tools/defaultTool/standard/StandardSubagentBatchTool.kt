@@ -28,8 +28,16 @@ class StandardSubagentBatchTool(context: Context) : ToolExecutor {
             emit(failure(tool, error.message ?: "Invalid subagent batch parameters"))
             return@flow
         }
+        val roundId = com.ai.assistance.operit.data.stats.SubagentProgressStore.beginRound(
+            requireNotNull(parent.callerChatId)
+        )
+        val roundExecutor = object : ToolExecutor {
+            override fun invoke(childTool: AITool): ToolResult = childExecutor.invoke(childTool)
+            override fun invokeAndStream(childTool: AITool): Flow<ToolResult> =
+                childExecutor.invokeInRound(childTool, roundId)
+        }
         val startedAt = System.nanoTime()
-        val results = SubagentBatchRunner.run(requests, childExecutor)
+        val results = SubagentBatchRunner.run(requests, roundExecutor)
         // Batch delivery succeeded even when individual children failed. Keep all results visible
         // to the parent instead of reducing partial success to one generic tool error.
         val output = SubagentBatchOutput.completed(

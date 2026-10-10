@@ -41,3 +41,5 @@ Implementation is complete. Release unit tests passed in cloud run 37972771750; 
 ## Automatic phase routing iteration
 
 The development branch now uses [automatic phase model routing](08-automatic-phase-model-routing.md), which supersedes the stage menu actions in 06 and 07. The interface retains only checklist and subagent progress. Cloud and device validation are recorded separately.
+
+[Current subagent round](09-current-subagent-round.md) defines replacement of prior progress cards and existing failure/cancellation behavior.

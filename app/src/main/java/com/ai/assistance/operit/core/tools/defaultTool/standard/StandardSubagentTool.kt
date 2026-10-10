@@ -35,7 +35,9 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
         return failure(tool, "run_subagent requires the native streaming tool execution path")
     }
 
-    override fun invokeAndStream(tool: AITool): Flow<ToolResult> = flow {
+    override fun invokeAndStream(tool: AITool): Flow<ToolResult> = invokeInRound(tool, null)
+
+    internal fun invokeInRound(tool: AITool, batchRoundId: String?): Flow<ToolResult> = flow {
         val parent = ToolExecutionManager.currentToolRuntimeContext()
         if (parent == null || parent.isSubTask) {
             emit(failure(tool, "Only a parent agent can delegate a subtask; nested delegation is disabled"))
@@ -58,9 +60,10 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
             emit(failure(tool, "Missing parent chat identity"))
             return@flow
         }
+        val roundId = batchRoundId ?: com.ai.assistance.operit.data.stats.SubagentProgressStore.beginRound(parentChatId)
         val childToolIds = java.util.IdentityHashMap<com.ai.assistance.operit.data.model.ToolInvocation, String>()
         com.ai.assistance.operit.data.stats.SubagentProgressStore.start(parentChatId,
-            com.ai.assistance.operit.data.stats.SubagentProgress(id, request.profile.wireName, request.description))
+            com.ai.assistance.operit.data.stats.SubagentProgress(id, request.profile.wireName, request.description), roundId)
         try {
             val mapping = FunctionalConfigManager(appContext)
                 .getConfigMappingForFunction(FunctionType.SUBAGENT)

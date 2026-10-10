@@ -79,6 +79,37 @@ class SubagentProgressStoreTest {
     }
 
     @Test
+    fun newRoundReplacesOldCardsAndKeepsEveryChildInTheBatch() {
+        val chatId = UUID.randomUUID().toString()
+        val otherChatId = UUID.randomUUID().toString()
+        try {
+            val oldRound = SubagentProgressStore.beginRound(chatId)
+            SubagentProgressStore.start(chatId, SubagentProgress("old", "Explore", "Old task"), oldRound)
+            SubagentProgressStore.finish(chatId, "old", "failed")
+            val otherRound = SubagentProgressStore.beginRound(otherChatId)
+            SubagentProgressStore.start(otherChatId, SubagentProgress("other", "Explore", "Other chat"), otherRound)
+            val newRound = SubagentProgressStore.beginRound(chatId)
+            assertTrue(SubagentProgressStore.sessions.value.getValue(chatId).isEmpty())
+            SubagentProgressStore.start(chatId, SubagentProgress("first", "Explore", "First"), newRound)
+            SubagentProgressStore.finish(chatId, "first", "completed")
+            SubagentProgressStore.start(chatId, SubagentProgress("second", "Explore", "Second"), newRound)
+            assertEquals(listOf("first", "second"), SubagentProgressStore.sessions.value.getValue(chatId).map { it.agentId })
+            assertEquals("other", SubagentProgressStore.sessions.value.getValue(otherChatId).single().agentId)
+            // Late starts, tool events and finalizers from the old round cannot restore its cards.
+            SubagentProgressStore.start(chatId, SubagentProgress("late", "Explore", "Late old child"), oldRound)
+            SubagentProgressStore.tool(chatId, "old", SubagentToolProgress("late-tool", "read_file", "result"))
+            SubagentProgressStore.finish(chatId, "old", "completed")
+            assertEquals(listOf("first", "second"), SubagentProgressStore.sessions.value.getValue(chatId).map { it.agentId })
+            SubagentProgressStore.clear(chatId)
+            SubagentProgressStore.start(chatId, SubagentProgress("late-new", "Explore", "After clear"), newRound)
+            assertTrue(chatId !in SubagentProgressStore.sessions.value)
+        } finally {
+            SubagentProgressStore.clear(chatId)
+            SubagentProgressStore.clear(otherChatId)
+        }
+    }
+
+    @Test
     fun boundsToolHistory() {
         val chatId = UUID.randomUUID().toString()
         try {

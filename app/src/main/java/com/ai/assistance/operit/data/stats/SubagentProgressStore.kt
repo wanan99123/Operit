@@ -21,12 +21,24 @@ object SubagentProgressStore {
     private val state = MutableStateFlow<Map<String, List<SubagentProgress>>>(emptyMap())
     val sessions: StateFlow<Map<String, List<SubagentProgress>>> = state.asStateFlow()
 
+    private val rounds = mutableMapOf<String, String>()
+
+    /** One batch is one round. Start it before launching children, never from each batch child. */
     @Synchronized
-    fun start(chatId: String, agent: SubagentProgress) {
+    fun beginRound(chatId: String): String {
+        require(chatId.isNotBlank()) { "A chat id is required" }
+        val roundId = java.util.UUID.randomUUID().toString()
+        rounds[chatId] = roundId
+        state.value = state.value + (chatId to emptyList())
+        return roundId
+    }
+
+    @Synchronized
+    fun start(chatId: String, agent: SubagentProgress, roundId: String? = null) {
+        // A superseded round can still finish cleanup; it must not repopulate the new panel.
+        if (roundId != null && rounds[chatId] != roundId) return
         val old = state.value[chatId].orEmpty()
-        val running = old.filter { it.status == "running" }
-        val recent = old.filter { it.status != "running" }.takeLast(10)
-        state.value = state.value + (chatId to (running + recent + agent))
+        state.value = state.value + (chatId to (old + agent))
     }
 
     @Synchronized
@@ -59,5 +71,8 @@ object SubagentProgressStore {
     }
 
     @Synchronized
-    fun clear(chatId: String) { state.value = state.value - chatId }
+    fun clear(chatId: String) {
+        rounds.remove(chatId)
+        state.value = state.value - chatId
+    }
 }
