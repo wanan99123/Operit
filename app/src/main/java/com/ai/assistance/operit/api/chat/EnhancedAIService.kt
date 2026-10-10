@@ -13,6 +13,12 @@ import com.ai.assistance.operit.api.chat.enhance.MultiServiceManager
 import com.ai.assistance.operit.api.chat.enhance.ToolExecutionManager
 import com.ai.assistance.operit.api.chat.enhance.ToolCallBudget
 import com.ai.assistance.operit.api.chat.llmprovider.AIService
+import com.ai.assistance.operit.core.chat.ContextDiagnosticsBuilder
+import com.ai.assistance.operit.core.chat.PlanContextInjection
+import com.ai.assistance.operit.data.stats.ContextDiagnosticsStore
+import com.ai.assistance.operit.data.stats.ContextTokenCount
+import com.ai.assistance.operit.data.stats.ContextTokenSource
+import com.ai.assistance.operit.data.stats.PlanStepStore
 import com.ai.assistance.operit.core.chat.logMessageTiming
 import com.ai.assistance.operit.core.chat.messageTimingNow
 import com.ai.assistance.operit.core.chat.hooks.PromptHookContext
@@ -799,6 +805,25 @@ class EnhancedAIService private constructor(
         return windowSize
     }
 
+    private fun recordRequestDiagnostics(
+        chatId: String?,
+        history: List<PromptTurn>,
+        tools: List<ToolPrompt>?,
+        windowEstimate: Long,
+        maxTokens: Int,
+        threshold: Double?,
+        isSubTask: Boolean
+    ) {
+        // Child requests share the parent chat ID but must not replace its diagnostics.
+        if (chatId == null || isSubTask || delegatedInstance) return
+        ContextDiagnosticsStore.recordRequest(
+            chatId = chatId,
+            sections = ContextDiagnosticsBuilder.sections(history, tools),
+            limits = ContextDiagnosticsBuilder.limits(maxTokens, threshold),
+            total = ContextTokenCount(windowEstimate, ContextTokenSource.ESTIMATE)
+        )
+    }
+
     private fun applyPromptFinalizeHooks(
         initialContext: PromptHookContext,
         dispatchHooks: (PromptHookContext) -> PromptHookContext = PromptHookRegistry::dispatchPromptFinalizeHooks
@@ -1213,11 +1238,21 @@ class EnhancedAIService private constructor(
                     execContext.conversationHistory.clear()
                     execContext.conversationHistory.addAll(requestHistory)
                     execContext.onChildHistoryCheckpoint?.invoke(execContext.conversationHistory.toList())
-                    estimatePreparedRequestWindow(
+                    val requestWindow = estimatePreparedRequestWindow(
                         serviceForFunction = serviceForFunction,
                         preparedHistory = requestHistory,
                         availableTools = availableTools,
                         publishEstimate = true
+                    )
+                    recordRequestDiagnostics(
+                        chatId, requestHistory, availableTools, requestWindow,
+                        com.ai.assistance.operit.core.chat.summaryContextWindowTokens(
+                            modelSnapshot.config.contextLength,
+                            modelSnapshot.config.maxContextLength,
+                            modelSnapshot.config.enableMaxContextMode
+                        ),
+                        if (onTokenLimitExceeded != null) modelSnapshot.config.summaryTokenThreshold.toDouble() else null,
+                        isSubTask
                     )
                     
                     // 使用新的Stream API
@@ -2439,6 +2474,14 @@ class EnhancedAIService private constructor(
             context.conversationHistory.addAll(refreshed)
             context.modelPromptNeedsRefresh = false
         }
+        // A plan can change without a model route change; replace its snapshot every tool round.
+        if (chatId != null) {
+            val refreshedPlan = PlanContextInjection.attach(
+                context.conversationHistory, PlanStepStore.formatPlanContext(chatId)
+            )
+            context.conversationHistory.clear()
+            context.conversationHistory.addAll(refreshedPlan)
+        }
         val modelParameters = modelSnapshot.modelParameters
 
         // 获取对应功能类型的AIService实例
@@ -2484,6 +2527,10 @@ class EnhancedAIService private constructor(
             }
         }
 
+        recordRequestDiagnostics(
+            chatId, currentChatHistory, availableTools, currentTokens, requestMaxTokens,
+            if (onTokenLimitExceeded != null) requestTokenThreshold else null, isSubTask
+        )
         // 清空之前的单次请求token计数
         _perRequestTokenCounts.value = null
         currentRequestInputTokenCount = 0L
@@ -2857,8 +2904,8 @@ class EnhancedAIService private constructor(
         val chatModelHasDirectVideo = config.enableDirectVideoProcessing
         val toolExposureMode = ToolExposureMode.resolve(config.apiProviderType)
 
-        return conversationService.prepareConversationHistory(
-                chatHistory,
+        val prepared = conversationService.prepareConversationHistory(
+                PlanContextInjection.remove(chatHistory),
                 processedInput,
                 chatId,
                 workspacePath,
@@ -2882,6 +2929,9 @@ class EnhancedAIService private constructor(
                 dispatchHistoryHooks,
                 dispatchSystemPromptComposeHooks,
                 dispatchToolPromptComposeHooks
+        )
+        return if (chatId == null) prepared else PlanContextInjection.attach(
+            prepared, PlanStepStore.formatPlanContext(chatId)
         )
     }
 

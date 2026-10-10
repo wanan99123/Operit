@@ -9,22 +9,23 @@ import org.junit.Test
 
 class PlanModelStageStoreTest {
     @Test fun isolatesSessionsAndClearsWithPlan() {
+        val store = PlanStateRepository(RecordingPlanBackend())
         val a = UUID.randomUUID().toString()
         val b = UUID.randomUUID().toString()
         try {
-            assertNull(PlanModelStageStore.read(a))
-            PlanModelStageStore.update(a, PlanModelStage.GENERATION)
-            PlanModelStageStore.update(b, PlanModelStage.IMPLEMENTATION)
-            assertEquals(PlanModelStage.GENERATION, PlanModelStageStore.read(a))
-            assertEquals(PlanModelStage.IMPLEMENTATION, PlanModelStageStore.read(b))
-            PlanStepStore.clear(a)
-            assertNull(PlanModelStageStore.read(a))
-            assertEquals(PlanModelStage.IMPLEMENTATION, PlanModelStageStore.read(b))
-            PlanModelStageStore.update(b, null)
-            assertNull(PlanModelStageStore.read(b))
+            assertNull(store.read(a).stage)
+            store.updateStage(a, PlanModelStage.GENERATION)
+            store.updateStage(b, PlanModelStage.IMPLEMENTATION)
+            assertEquals(PlanModelStage.GENERATION, store.read(a).stage)
+            assertEquals(PlanModelStage.IMPLEMENTATION, store.read(b).stage)
+            store.clear(a)
+            assertNull(store.read(a).stage)
+            assertEquals(PlanModelStage.IMPLEMENTATION, store.read(b).stage)
+            store.updateStage(b, null)
+            assertNull(store.read(b).stage)
         } finally {
-            PlanStepStore.clear(a)
-            PlanStepStore.clear(b)
+            store.clear(a)
+            store.clear(b)
         }
     }
 
@@ -43,16 +44,17 @@ class PlanModelStageStoreTest {
     }
 
     @Test fun invalidPhaseDoesNotMutateExistingState() {
+        val store = PlanStateRepository(RecordingPlanBackend())
         val id = UUID.randomUUID().toString()
         try {
-            PlanModelStageStore.update(id, PlanModelStage.GENERATION)
+            store.updateStage(id, PlanModelStage.GENERATION)
             try {
                 val invalid = PlanModelStageStore.resolve("invalid", emptyList())
-                PlanModelStageStore.update(id, invalid)
+                store.updateStage(id, invalid)
                 fail("Invalid phase was accepted")
             } catch (_: IllegalArgumentException) { }
-            assertEquals(PlanModelStage.GENERATION, PlanModelStageStore.read(id))
-        } finally { PlanStepStore.clear(id) }
+            assertEquals(PlanModelStage.GENERATION, store.read(id).stage)
+        } finally { store.clear(id) }
     }
 
     private fun step(status: PlanStepStatus) = PlanStep("Work", status)

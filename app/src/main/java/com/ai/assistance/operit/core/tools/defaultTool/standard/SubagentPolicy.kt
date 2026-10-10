@@ -14,7 +14,7 @@ enum class SubagentProfile(val wireName: String) {
 object SubagentPolicy {
     private val disallowed = setOf(
         "run_subagent", "run_subagents", "subagent_run", "Agent", "Task", "update_plan",
-        "EnterPlanMode", "ExitPlanMode", "enter_plan_mode", "exit_plan_mode"
+        "EnterPlanMode", "ExitPlanMode", "enter_plan_mode", "exit_plan_mode", "read_session_context"
     )
     val exploreTools = setOf(
         "list_files", "read_file", "read_file_part", "find_files", "grep_code",
@@ -24,7 +24,7 @@ object SubagentPolicy {
     fun denial(toolName: String, isSubTask: Boolean, profile: SubagentProfile?): String? {
         if (!isSubTask) return null
         if (toolName.substringAfterLast(':') in disallowed) {
-            return "Child agents cannot delegate or change the parent plan"
+            return "Child agents cannot delegate, change the parent plan, or retrieve primary-session history"
         }
         if (profile == SubagentProfile.EXPLORE && toolName !in exploreTools) {
             return "Explore is read-only; tool $toolName is not allowed"

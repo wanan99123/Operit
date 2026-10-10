@@ -103,6 +103,9 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
                             } else {
                                 appendLine("Continue the SAME delegated task from recorded history and completed tool results. Do not restart or repeat completed operations.")
                             }
+                            // Explicit reference only: the child owns no authority over the parent plan.
+                            appendLine("Parent plan reference only: perform only this delegated task, not unrelated parent steps.")
+                            appendLine(com.ai.assistance.operit.data.stats.PlanStepStore.formatPlanContext(parentChatId))
                             if (previousError != null) {
                                 appendLine("Execution was interrupted: ${previousError.take(2000)}")
                                 appendLine("Verify tools marked outcome unknown before further action. Never blindly replay an interrupted write, upload, submit or other irreversible action. If its outcome cannot be verified, report the blocker.")

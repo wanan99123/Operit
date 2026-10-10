@@ -1753,6 +1753,11 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
         descriptionGenerator = { _ -> s(R.string.toolreg_read_plan_desc) },
         executor = com.ai.assistance.operit.core.tools.defaultTool.standard.ReadPlanTool()
     )
+    handler.registerTool(
+        name = "read_session_context",
+        descriptionGenerator = { _ -> s(R.string.toolreg_read_session_context_desc) },
+        executor = com.ai.assistance.operit.core.tools.defaultTool.standard.ReadSessionContextTool(context)
+    )
     // 列出所有角色卡
     handler.registerTool(
             name = "list_character_cards",

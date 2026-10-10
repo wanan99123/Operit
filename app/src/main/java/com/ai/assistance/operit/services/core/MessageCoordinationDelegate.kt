@@ -4,6 +4,8 @@ import android.content.Context
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
+import com.ai.assistance.operit.core.chat.ContextDiagnosticsBuilder
+import com.ai.assistance.operit.data.stats.ContextDiagnosticsStore
 import com.ai.assistance.operit.core.chat.AIMessageManager
 import com.ai.assistance.operit.core.chat.hooks.PromptTurn
 import com.ai.assistance.operit.core.chat.hooks.PromptTurnKind
@@ -1622,6 +1624,7 @@ class MessageCoordinationDelegate(
             val success =
                 summarizeHistory(
                     autoContinue = false,
+                    compressionReason = "manual",
                     chatIdOverride = currentChatId,
                     isGroupChat = isGroupChatSession(currentChatId)
                 )
@@ -1645,6 +1648,7 @@ class MessageCoordinationDelegate(
         summaryJob = coroutineScope.launch {
             summarizeHistory(
                 autoContinue = true,
+                compressionReason = "tool_token_limit",
                 chatIdOverride = chatId,
                 roleCardIdOverride = roleCardId,
                 isGroupChat = isGroupChatSession(chatId),
@@ -1771,6 +1775,20 @@ class MessageCoordinationDelegate(
         cancelSummaryInternal(chatId)
     }
 
+    // Shared by threshold summaries and anchored manual insertion; call only after persistence.
+    fun recordCompressionDiagnostics(
+        chatId: String,
+        reason: String,
+        messages: List<ChatMessage>,
+        summary: ChatMessage
+    ) {
+        val snapshot = ContextDiagnosticsBuilder.compression(reason, messages, summary)
+        ContextDiagnosticsStore.recordCompression(
+            chatId, snapshot.reason, snapshot.before, snapshot.after,
+            snapshot.coveredMessages, snapshot.recordedAt
+        )
+    }
+
     private fun launchAsyncSummaryForSend(
         snapshotMessages: List<ChatMessage>,
         beforeTimestamp: Long?,
@@ -1829,7 +1847,9 @@ class MessageCoordinationDelegate(
                     chatIdOverride = originalChatId,
                 )
                 if (!inserted) return@launch
-
+                recordCompressionDiagnostics(
+                    originalChatId, "send_threshold", snapshotMessages, summaryMessage
+                )
                 refreshStableContextWindow(
                     chatId = originalChatId,
                     roleCardId = roleCardId,
@@ -1883,7 +1903,8 @@ class MessageCoordinationDelegate(
         roleCardIdOverride: String? = null,
         isGroupChat: Boolean = false,
         isGroupOrchestrationTurn: Boolean = false,
-        groupParticipantNamesText: String? = null
+        groupParticipantNamesText: String? = null,
+        compressionReason: String = "automatic_threshold"
     ): Boolean {
         if (_isSummarizing.value) {
             AppLogger.d(TAG, "已在总结中，忽略本次请求")
@@ -1952,6 +1973,9 @@ class MessageCoordinationDelegate(
                 if (!inserted) {
                     uiStateDelegate.showErrorMessage(context.getString(R.string.chat_summary_not_inserted))
                     return false
+                }
+                if (currentChatId != null) {
+                    recordCompressionDiagnostics(currentChatId, compressionReason, currentMessages, summaryMessage)
                 }
                 val phase = currentChatId?.let {
                     com.ai.assistance.operit.data.stats.PlanModelStageStore.read(it)

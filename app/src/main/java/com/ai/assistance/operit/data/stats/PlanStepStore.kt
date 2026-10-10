@@ -1,27 +1,41 @@
 package com.ai.assistance.operit.data.stats
 
+import android.content.Context
+import com.ai.assistance.operit.data.model.PlanModelStage
 import com.ai.assistance.operit.data.model.PlanStep
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
-/** Live, process-local plans. Each UI derives its own selection, including floating windows. */
+/** Durable chat-scoped plans. Initialize in Application before accessing either Store. */
 object PlanStepStore {
-    private val state = MutableStateFlow<Map<String, List<PlanStep>>>(emptyMap())
-    val plans: StateFlow<Map<String, List<PlanStep>>> = state.asStateFlow()
+    @Volatile private var initialized = false
+    private lateinit var repository: PlanStateRepository
 
     @Synchronized
-    fun update(key: String, steps: List<PlanStep>): List<PlanStep> {
-        require(key.isNotBlank()) { "A chat id is required" }
-        val previous = state.value[key].orEmpty()
-        state.value = if (steps.isEmpty()) state.value - key else state.value + (key to steps.toList())
-        return previous
+    fun initialize(context: Context) {
+        if (initialized) return
+        repository = PlanStateRepository(AtomicPlanStateBackend(context.applicationContext))
+        initialized = true
     }
 
-    fun read(key: String): List<PlanStep> = state.value[key].orEmpty().toList()
+    private fun repository(): PlanStateRepository {
+        check(initialized) { "PlanStepStore.initialize(context) must run before plan access" }
+        return repository
+    }
 
-    fun clear(key: String) {
-        PlanModelStageStore.clear(key)
-        update(key, emptyList())
+    val plans: StateFlow<Map<String, List<PlanStep>>> get() = repository().plans
+
+    /** Legacy steps-only writes preserve phase in the same durable snapshot. */
+    fun update(key: String, steps: List<PlanStep>): List<PlanStep> = repository().updateSteps(key, steps)
+
+    /** Use one transaction for model-authored changes to both steps and phase. */
+    fun update(key: String, steps: List<PlanStep>, stage: PlanModelStage?): List<PlanStep> =
+        repository().update(key, steps, stage)
+
+    fun read(key: String): List<PlanStep> = readState(key).steps.toList()
+    fun readState(chatId: String): PlanStateSnapshot = repository().read(chatId)
+    fun clear(key: String) { repository().clear(key) }
+    fun formatPlanContext(chatId: String): String = repository().formatPlanContext(chatId)
+    internal fun updateStage(chatId: String, stage: PlanModelStage?) {
+        repository().updateStage(chatId, stage)
     }
 }

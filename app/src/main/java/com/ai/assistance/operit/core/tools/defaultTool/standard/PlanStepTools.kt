@@ -14,7 +14,7 @@ import org.json.JSONObject
  * Writes the session working plan, mirroring ZCode's TodoWrite contract:
  *
  * - the model always sends the **complete** list, which replaces the previous plan;
- * - the tool is session-scoped and never touches the file system;
+ * - the tool is chat-scoped and commits steps and phase as one durable snapshot;
  * - the result echoes the previous list, the new list and aggregate counters so the model can
  *   confirm what changed without a second read.
  *
@@ -47,8 +47,11 @@ class UpdatePlanTool : ToolExecutor {
         } catch (error: IllegalArgumentException) {
             return failure(tool, error.message ?: "Invalid model stage")
         }
-        PlanModelStageStore.update(chatKey, stage)
-        val previous = PlanStepStore.update(chatKey, steps)
+        val previous = try {
+            PlanStepStore.update(chatKey, steps, stage)
+        } catch (error: IllegalStateException) {
+            return failure(tool, "Cannot persist plan: ${error.message}")
+        }
         val summary = PlanStepSummary.of(steps)
 
         val payload =
@@ -90,7 +93,7 @@ class UpdatePlanTool : ToolExecutor {
 
 /**
  * Reads back the session working plan, mirroring ZCode's TodoRead. Read-only and side-effect free,
- * so it stays available to subagents that need to know the parent's plan.
+ * scoped to the runtime chat identity. Children receive the parent plan as explicit task context.
  */
 class ReadPlanTool : ToolExecutor {
 
@@ -104,10 +107,15 @@ class ReadPlanTool : ToolExecutor {
                 "read_plan requires an active chat session"
             )
         }
-        val steps = PlanStepStore.read(chatKey)
+        val snapshot = try {
+            PlanStepStore.readState(chatKey)
+        } catch (error: IllegalStateException) {
+            return ToolResult(tool.name, false, StringResultData(""), "Cannot read plan: ${error.message}")
+        }
+        val steps = snapshot.steps
         val payload = JSONObject()
             .put("todos", PlanStepRequest.toJson(steps))
-            .put("model_stage", PlanModelStageStore.read(chatKey)?.name?.lowercase() ?: "chat")
+            .put("model_stage", snapshot.stage?.name?.lowercase() ?: "chat")
             .toString()
         return ToolResult(tool.name, true, StringResultData(payload))
     }

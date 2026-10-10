@@ -749,6 +749,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             if (deleted) {
                 pendingMessageQueueStore.removeChat(chatId)
                 com.ai.assistance.operit.data.stats.PlanStepStore.clear(chatId)
+                com.ai.assistance.operit.data.stats.ContextDiagnosticsStore.clear(chatId)
                 com.ai.assistance.operit.data.stats.SubagentProgressStore.clear(chatId)
             } else {
                 uiStateDelegate.showToast(context.getString(R.string.chat_locked_cannot_delete))
@@ -762,6 +763,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             if (deleted) {
                 chatIdToClear?.let { chatId ->
                     com.ai.assistance.operit.data.stats.PlanStepStore.clear(chatId)
+                    com.ai.assistance.operit.data.stats.ContextDiagnosticsStore.clear(chatId)
                     com.ai.assistance.operit.data.stats.SubagentProgressStore.clear(chatId)
                 }
                 uiStateDelegate.showToast(context.getString(R.string.chat_cleared))
@@ -932,8 +934,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                         summaryMessage = summaryMessage,
                         beforeTimestamp = beforeTimestamp,
                         afterTimestamp = afterTimestamp,
+                        chatIdOverride = currentChatId,
                     )
                     if (inserted) {
+                        messageCoordinationDelegate.recordCompressionDiagnostics(
+                            currentChatId, "manual", messagesToSummarize, summaryMessage
+                        )
                         messageCoordinationDelegate.refreshStableContextWindow(chatId = currentChatId)
                         uiStateDelegate.showToast(context.getString(R.string.chat_summary_inserted))
                     } else {
