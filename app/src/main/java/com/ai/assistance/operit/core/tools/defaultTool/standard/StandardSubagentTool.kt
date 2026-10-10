@@ -10,6 +10,7 @@ import com.ai.assistance.operit.core.tools.ToolExecutor
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ToolResult
+import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.ChatUtils
@@ -47,12 +48,6 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
             emit(failure(tool, error.message ?: "Invalid subagent parameters"))
             return@flow
         }
-        val configId = parent.chatModelConfigId
-        val modelIndex = parent.chatModelIndex
-        if (configId.isNullOrBlank() || modelIndex == null) {
-            emit(failure(tool, "Missing parent model identity"))
-            return@flow
-        }
         if (!slots.tryAcquire()) {
             emit(failure(tool, "Two subagents are already running. Wait for a result before delegating again."))
             return@flow
@@ -72,6 +67,12 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
         com.ai.assistance.operit.data.stats.SubagentProgressStore.start(parentChatId,
             com.ai.assistance.operit.data.stats.SubagentProgress(id, request.profile.wireName, request.description))
         try {
+            val mapping = FunctionalConfigManager(appContext)
+                .getConfigMappingForFunction(FunctionType.SUBAGENT)
+            val configId = mapping.configId
+            val modelIndex = mapping.modelIndex
+            // Model overrides only apply to CHAT, which also runs the full tool-enabled chat pipeline.
+            // Read the dedicated mapping once so context budgeting and execution use the same model.
             val child = EnhancedAIService.createSubagentInstance(appContext, request.profile)
             service = child
             emit(ToolResult(tool.name, true, StringResultData(
@@ -82,9 +83,9 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
             val result = withTimeout(request.timeoutSeconds * 1000L) {
                 val config = child.getModelConfigForFunction(FunctionType.CHAT, configId, modelIndex)
                 val maxContextTokens = (config.contextLength.toDouble() * 1024.0).toInt()
-                require(maxContextTokens > 0) { "Parent model context length must be configured" }
+                require(maxContextTokens > 0) { "Subagent model context length must be configured" }
                 require(config.summaryTokenThreshold.toDouble() > 0.0 && config.summaryTokenThreshold.toDouble() <= 1.0) {
-                    "Invalid parent context threshold"
+                    "Invalid subagent context threshold"
                 }
                 val prompt = buildString {
                     appendLine("Complete this delegated task and return a concise result to the parent agent:")

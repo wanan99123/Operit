@@ -44,7 +44,7 @@ object SystemToolPrompts {
         tools = listOf(
             ToolPrompt(
                 name = "run_subagent",
-                description = "Launch one synchronous profile-backed subagent and return a structured result. The parent model and permissions are inherited; the child starts with a fresh context. Background execution is not supported.",
+                description = "Launch one synchronous profile-backed subagent and return a structured result. The child uses the Subagent functional model configuration and inherits the parent role, permissions and workspace; it starts with a fresh context. Background execution is not supported.",
                 parametersStructured = listOf(
                     ToolParameterSchema(name = "description", type = "string", description = "Short 3-5 word task description.", required = true),
                     ToolParameterSchema(name = "prompt", type = "string", description = "Self-contained task for the child agent.", required = true),
@@ -93,7 +93,7 @@ object SystemToolPrompts {
         tools = listOf(
             ToolPrompt(
                 name = "run_subagent",
-                description = "启动一个同步的配置文件型子智能体并返回结构化结果。继承父模型和权限，子任务使用全新上下文。当前不支持后台执行。",
+                description = "启动一个同步的配置文件型子智能体并返回结构化结果。使用子智能体功能模型配置，继承父会话的角色、权限与工作区，子任务使用全新上下文。当前不支持后台执行。",
                 parametersStructured = listOf(
                     ToolParameterSchema(name = "description", type = "string", description = "简短的 3-5 个词任务描述。", required = true),
                     ToolParameterSchema(name = "prompt", type = "string", description = "给子智能体的自包含任务。", required = true),

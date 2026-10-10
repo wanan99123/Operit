@@ -17,6 +17,8 @@ The previous native subagent API accepted task/context_text and returned a flat 
 - Reject background execution and nested delegation. Explore is enforced as read-only before execution.
 - Return completed agentId/agentType/description/prompt/content/totalToolUseCount/totalDurationMs/totalTokens.
 - Mirror bounded child-tool lifecycle metadata into the parent-session progress panel, without raw output or reasoning.
+Subagents now use the independent SUBAGENT functional model mapping. The functional configuration screen exposes its configuration, model selection and connection test. Parent role, permissions and workspace remain inherited; both general-purpose and Explore use the selected child model.
+
 
 ## Verification
 
