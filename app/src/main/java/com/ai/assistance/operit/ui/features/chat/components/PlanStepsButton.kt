@@ -54,12 +54,15 @@ fun PlanStepsButton(
     subagents: List<SubagentProgress> = emptyList(),
 ) {
     var expanded by remember(sessionId) { mutableStateOf(false) }
-    val completedCount = steps.count { it.status == PlanStepStatus.COMPLETED }
+    val visibleSteps = visibleHeaderPlanSteps(steps)
+    val completedCount = visibleSteps.count { it.status == PlanStepStatus.COMPLETED }
     val visibleAgents = visibleHeaderSubagents(subagents)
+    // Completed plans remain persisted, but neither they nor finished agent rounds keep the entry alive.
+    if (visibleSteps.isEmpty() && visibleAgents.isEmpty()) return
     val runningAgents = visibleAgents.count { it.status == "running" || it.status == "retrying" }
     val activeStep =
-        steps.firstOrNull { it.status == PlanStepStatus.IN_PROGRESS }
-            ?: steps.firstOrNull { it.status != PlanStepStatus.COMPLETED }
+        visibleSteps.firstOrNull { it.status == PlanStepStatus.IN_PROGRESS }
+            ?: visibleSteps.firstOrNull { it.status != PlanStepStatus.COMPLETED }
 
     Box(modifier = modifier) {
         Row(
@@ -77,16 +80,16 @@ fun PlanStepsButton(
                 tint =
                     when {
                         runningAgents > 0 -> MaterialTheme.colorScheme.primary
-                        steps.isEmpty() ->
+                        visibleSteps.isEmpty() ->
                             MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         activeStep != null -> MaterialTheme.colorScheme.primary
                         else -> MaterialTheme.colorScheme.tertiary
                     },
                 modifier = Modifier.size(18.dp)
             )
-            if (steps.isNotEmpty()) {
+            if (visibleSteps.isNotEmpty()) {
                 Text(
-                    text = "$completedCount/${steps.size}",
+                    text = "$completedCount/${visibleSteps.size}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -106,7 +109,7 @@ fun PlanStepsButton(
             modifier = Modifier.widthIn(min = 240.dp, max = 320.dp)
                 .heightIn(max = 360.dp).background(MaterialTheme.colorScheme.surface)
         ) {
-            if (steps.isEmpty()) {
+            if (visibleSteps.isEmpty()) {
                 Text(
                     text = stringResource(R.string.plan_steps_empty),
                     style = MaterialTheme.typography.bodySmall,
@@ -115,15 +118,15 @@ fun PlanStepsButton(
                 )
             } else {
                 val firstActive =
-                    steps.firstOrNull { it.status == PlanStepStatus.IN_PROGRESS }
-                        ?: steps.firstOrNull { it.status != PlanStepStatus.COMPLETED }
+                    visibleSteps.firstOrNull { it.status == PlanStepStatus.IN_PROGRESS }
+                        ?: visibleSteps.firstOrNull { it.status != PlanStepStatus.COMPLETED }
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Text(
                         text =
                             stringResource(
                                 R.string.plan_steps_progress,
                                 completedCount,
-                                steps.size
+                                visibleSteps.size
                             ),
                         style =
                             MaterialTheme.typography.labelMedium.copy(
@@ -147,7 +150,7 @@ fun PlanStepsButton(
                 }
                 HorizontalDivider()
                 Column {
-                    steps.forEach { PlanStepRow(it) }
+                    visibleSteps.forEach { PlanStepRow(it) }
                 }
             }
             if (visibleAgents.isNotEmpty()) {
