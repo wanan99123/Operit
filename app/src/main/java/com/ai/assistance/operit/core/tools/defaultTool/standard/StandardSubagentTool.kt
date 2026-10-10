@@ -22,7 +22,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
@@ -48,10 +47,7 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
             emit(failure(tool, error.message ?: "Invalid subagent parameters"))
             return@flow
         }
-        if (!slots.tryAcquire()) {
-            emit(failure(tool, "Two subagents are already running. Wait for a result before delegating again."))
-            return@flow
-        }
+        // Delegations are parent-scoped; no global count or concurrency quota is imposed.
         val id = UUID.randomUUID().toString()
         var service: EnhancedAIService? = null
         val toolCalls = java.util.concurrent.atomic.AtomicInteger(0)
@@ -59,7 +55,6 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
         var finalStatus = "cancelled"
         val parentChatId = parent.callerChatId
         if (parentChatId.isNullOrBlank()) {
-            slots.release()
             emit(failure(tool, "Missing parent chat identity"))
             return@flow
         }
@@ -158,7 +153,6 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
                 withContext(NonCancellable) { service?.closeSubagentInstance() }
             } finally {
                 com.ai.assistance.operit.data.stats.SubagentProgressStore.finish(parentChatId, id, finalStatus)
-                slots.release()
             }
         }
     }
@@ -168,6 +162,5 @@ class StandardSubagentTool(context: Context) : ToolExecutor {
 
     companion object {
         private const val TAG = "StandardSubagentTool"
-        private val slots = Semaphore(2)
     }
 }
